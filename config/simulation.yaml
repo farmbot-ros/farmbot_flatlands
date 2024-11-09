@@ -1,0 +1,12 @@
+robots:
+    - namespace: robot1
+      initial_pose:
+          x: 2.0
+          y: 3.0
+          theta: 1.57
+    - namespace: robot2
+      initial_pose:
+          x: 0.0
+          y: 0.0
+          theta: 0.0
+    # Add more robots as needed
