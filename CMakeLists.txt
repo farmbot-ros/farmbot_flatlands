@@ -28,6 +28,7 @@ install(
 
 set(executables
     robot
+    visualize
 )
 
 find_package(ament_cmake REQUIRED)

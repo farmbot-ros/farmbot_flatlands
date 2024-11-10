@@ -178,9 +178,7 @@ class MobileRobotSimulator : public rclcpp::Node {
 
 public:
     MobileRobotSimulator(const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
-        : Node("mobile_simulator", options),
-          is_running(false),
-          th(0.0) {
+        : Node("mobile_simulator", options), is_running(false), th(0.0) {
 
         // Declare and get parameters
         this->declare_parameter<double>("publish_rate", 10.0);
