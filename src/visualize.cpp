@@ -24,7 +24,7 @@ class OdomNPath : public rclcpp::Node {
             .allow_undeclared_parameters(true)
             .automatically_declare_parameters_from_overrides(true)
         ){
-            RCLCPP_INFO(this->get_logger(), "Starting Odom&Path");
+            RCLCPP_INFO(this->get_logger(), "Startin vsualization node...");
             try {
                 name = this->get_parameter("name").as_string();
             } catch (...) {

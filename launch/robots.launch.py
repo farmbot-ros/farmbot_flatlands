@@ -10,7 +10,7 @@ from ament_index_python.packages import get_package_share_directory
 
 def generate_launch_description():
     # Path to the simulation.yaml file
-    pkg_share = get_package_share_directory('farmbot_flatlands')  # Use your package name
+    pkg_share = get_package_share_directory('farmbot_flatlands')
     config_file = os.path.join(pkg_share, 'config', 'simulation.yaml')
 
     # Load the YAML file
@@ -30,8 +30,8 @@ def generate_launch_description():
 
         # Launch the MobileRobotSimulator node within the specified namespace
         robot_node = Node(
-            package='farmbot_flatlands',  # Use your package name
-            executable='robot',  # Use your executable name
+            package='farmbot_flatlands',
+            executable='robot',
             name='mobile_robot_simulator',
             namespace=namespace,
             parameters=[
@@ -49,5 +49,23 @@ def generate_launch_description():
         )
 
         launch_description.add_action(robot_node)
+
+        visualize_node = Node(
+            package='farmbot_flatlands',
+            executable='visualize',
+            name='visualize_robot',
+            namespace=namespace,
+            parameters=[
+                {'robot_name': namespace},
+                {'robot_color': 'blue'},
+                {'robot_width': 0.5},
+                {'robot_length': 0.5},
+                {'robot_height': 0.5},
+            ],
+            output='screen'
+        )
+
+        launch_description.add_action(visualize_node)
+
 
     return launch_description
