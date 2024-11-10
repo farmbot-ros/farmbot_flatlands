@@ -1,12 +1,13 @@
 robots:
     - namespace: robot1
       initial_pose:
-          x: 2.0
-          y: 3.0
-          theta: 1.57
+          latitude: 51.98738974075392
+          longitude: 5.663766672207017
+          altitude: 1.902507008750121
+          heading: 1.5707963267948966
     - namespace: robot2
       initial_pose:
-          x: 0.0
-          y: 0.0
-          theta: 0.0
-    # Add more robots as needed
+          latitude: 51.98734974075392
+          longitude: 5.663366372207017
+          altitude: 1.902507008750121
+          heading: 0.5707963267948966

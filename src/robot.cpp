@@ -3,6 +3,8 @@
 // Message Types
 #include "geometry_msgs/msg/twist.hpp"
 #include "nav_msgs/msg/odometry.hpp"
+#include "sensor_msgs/msg/nav_sat_fix.hpp"
+#include "std_msgs/msg/float32.hpp"
 #include "visualization_msgs/msg/marker.hpp"
 #include "rosgraph_msgs/msg/clock.hpp"  // Added for /clock
 
@@ -16,67 +18,216 @@
 #include <rclcpp/logging.hpp>
 #include <string>
 #include <cmath>
+#include <tf2/LinearMath/Matrix3x3.h>
+#include <tf2/LinearMath/Vector3.h>
+#include <tuple>
+
+
+namespace loc {
+
+    // Constants
+    const double R = 6378137.0;                // Earth's radius in meters (equatorial radius)
+    const double f = 1.0 / 298.257223563;      // Flattening factor
+    const double e2 = 2 * f - f * f;           // Square of eccentricity
+
+    // Function to convert GPS (lat, lon, alt) to ECEF coordinates
+    std::tuple<double, double, double> gps_to_ecef(double latitude, double longitude, double altitude) {
+        // Convert latitude and longitude to radians
+        double cosLat = std::cos(latitude * M_PI / 180.0);
+        double sinLat = std::sin(latitude * M_PI / 180.0);
+        double cosLong = std::cos(longitude * M_PI / 180.0);
+        double sinLong = std::sin(longitude * M_PI / 180.0);
+        // Prime vertical radius of curvature
+        double N = R / std::sqrt(1.0 - e2 * sinLat * sinLat);
+        // Calculate ECEF coordinates
+        double x = (N + altitude) * cosLat * cosLong;
+        double y = (N + altitude) * cosLat * sinLong;
+        double z = (N * (1 - e2) + altitude) * sinLat;
+        // Return the ECEF coordinates
+        return std::make_tuple(x, y, z);
+    }
+
+    // Function to convert ECEF coordinates to ENU (East, North, Up) with respect to a datum
+    std::tuple<double, double, double> ecef_to_enu(std::tuple<double, double, double> ecef, std::tuple<double, double, double> datum) {
+        double x, y, z;
+        std::tie(x, y, z) = ecef;
+        double latRef, longRef, altRef;
+        std::tie(latRef, longRef, altRef) = datum;
+        // Convert the reference latitude and longitude to radians
+        double cosLatRef = std::cos(latRef * M_PI / 180.0);
+        double sinLatRef = std::sin(latRef * M_PI / 180.0);
+        double cosLongRef = std::cos(longRef * M_PI / 180.0);
+        double sinLongRef = std::sin(longRef * M_PI / 180.0);
+        // Prime vertical radius of curvature at the reference point
+        double NRef = R / std::sqrt(1.0 - e2 * sinLatRef * sinLatRef);
+        // Calculate the reference ECEF coordinates (datum)
+        double x0 = (NRef + altRef) * cosLatRef * cosLongRef;
+        double y0 = (NRef + altRef) * cosLatRef * sinLongRef;
+        double z0 = (NRef * (1 - e2) + altRef) * sinLatRef;
+        // Calculate the differences between the ECEF coordinates and the reference ECEF coordinates
+        double dx = x - x0;
+        double dy = y - y0;
+        double dz = z - z0;
+        // Calculate the ENU coordinates
+        double xEast = -sinLongRef * dx + cosLongRef * dy;
+        double yNorth = -cosLongRef * sinLatRef * dx - sinLatRef * sinLongRef * dy + cosLatRef * dz;
+        double zUp = cosLatRef * cosLongRef * dx + cosLatRef * sinLongRef * dy + sinLatRef * dz;
+        // Return the ENU coordinates
+        return std::make_tuple(xEast, yNorth, zUp);
+    }
+
+    // Function to convert GPS (lat, lon, alt) to ENU (East, North, Up) with respect to a datum
+    std::tuple<double, double, double> gps_to_enu(double latitude, double longitude, double altitude, double latRef, double longRef, double altRef) {
+        // Convert GPS coordinates to ECEF
+        std::tuple<double, double, double> ecef = gps_to_ecef(latitude, longitude, altitude);
+        // Return the ENU coordinates
+        return ecef_to_enu(ecef, std::make_tuple(latRef, longRef, altRef));
+    }
+
+    std::tuple<double, double, double> enu_to_ecef(std::tuple<double, double, double> enu, std::tuple<double, double, double> datum) {
+        // Extract ENU and datum coordinates
+        double xEast, yNorth, zUp;
+        std::tie(xEast, yNorth, zUp) = enu;
+        double latRef, longRef, altRef;
+        std::tie(latRef, longRef, altRef) = datum;
+        // Compute trigonometric values for the reference latitude and longitude
+        double cosLatRef = std::cos(latRef * M_PI / 180);
+        double sinLatRef = std::sin(latRef * M_PI / 180);
+        double cosLongRef = std::cos(longRef * M_PI / 180);
+        double sinLongRef = std::sin(longRef * M_PI / 180);
+        // Compute reference ECEF coordinates for the datum
+        double cRef = 1 / std::sqrt(cosLatRef * cosLatRef + (1 - f) * (1 - f) * sinLatRef * sinLatRef);
+        double x0 = (R * cRef + altRef) * cosLatRef * cosLongRef;
+        double y0 = (R * cRef + altRef) * cosLatRef * sinLongRef;
+        double z0 = (R * cRef * (1 - e2) + altRef) * sinLatRef;
+        // Reverse the ENU to ECEF transformation
+        double x = x0 + (-sinLongRef * xEast) - (sinLatRef * cosLongRef * yNorth) + (cosLatRef * cosLongRef * zUp);
+        double y = y0 + (cosLongRef * xEast) - (sinLatRef * sinLongRef * yNorth) + (cosLatRef * sinLongRef * zUp);
+        double z = z0 + (cosLatRef * yNorth) + (sinLatRef * zUp);
+        // Return the ECEF coordinates
+        return std::make_tuple(x, y, z);
+    }
+
+    std::tuple<double, double, double> ecef_to_gps(double x, double y, double z) {
+        const double e2 = f * (2 - f); // Square of eccentricity
+        const double eps = 1e-12; // Convergence threshold
+        double longitude = std::atan2(y, x) * 180 / M_PI;
+        // Compute initial latitude and height guesses
+        double p = std::sqrt(x * x + y * y);
+        double latitude = std::atan2(z, p * (1 - e2));
+        double N = R / std::sqrt(1 - e2 * std::sin(latitude) * std::sin(latitude)); // Prime vertical radius of curvature
+        double altitude = p / std::cos(latitude) - N;
+        double latOld;
+        // Iterate to refine the latitude and height
+        do {
+            latOld = latitude;
+            N = R / std::sqrt(1 - e2 * std::sin(latitude) * std::sin(latitude));
+            altitude = p / std::cos(latitude) - N;
+            latitude = std::atan2(z, p * (1 - e2 * N / (N + altitude)));
+        } while (std::abs(latitude - latOld) > eps);
+        // Return the GPS coordinates
+        return std::make_tuple(latitude * 180 / M_PI, longitude, altitude);
+    }
+
+    std::tuple<double, double, double> enu_to_gps(double xEast, double yNorth, double zUp, double latRef, double longRef, double altRef) {
+        // Convert ENU to ECEF
+        std::tuple<double, double, double> ecef = enu_to_ecef(std::make_tuple(xEast, yNorth, zUp), std::make_tuple(latRef, longRef, altRef));
+        // Convert ECEF to GPS
+        return ecef_to_gps(std::get<0>(ecef), std::get<1>(ecef), std::get<2>(ecef));
+    }
+}
 
 class MobileRobotSimulator : public rclcpp::Node {
+    private:
+        // Parameters
+        double publish_rate;
+        std::string velocity_topic_;
+        double latitude_;
+        double longitude_;
+        double heading_;
+        std::string odometry_topic_;
+        std::string position_topic_;
+        std::string reference_topic_;
+        std::string heading_topic_;
+
+        // ROS2 Messages
+        geometry_msgs::msg::Twist vel;
+        nav_msgs::msg::Odometry odom;
+        sensor_msgs::msg::NavSatFix pose;
+        sensor_msgs::msg::NavSatFix ref;
+        std_msgs::msg::Float32 heading;
+
+        // Time Variables
+        rclcpp::Time last_vel;
+        rclcpp::Time last_update;
+        rclcpp::Time measure_time;
+        rclcpp::Time simulated_time_;  // Simulated time
+
+        // State Variables
+        bool is_running;
+        double th;
+
+        // ROS2 Interfaces
+        rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr vel_sub;
+        rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub;
+        rclcpp::Subscription<sensor_msgs::msg::NavSatFix>::SharedPtr ref_sub;
+        rclcpp::Publisher<sensor_msgs::msg::NavSatFix>::SharedPtr gps_pub;
+        rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr heading_pub;
+        rclcpp::Publisher<rosgraph_msgs::msg::Clock>::SharedPtr clock_pub_;
+        rclcpp::TimerBase::SharedPtr loop_timer;
+
 public:
     MobileRobotSimulator(const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
-        : Node("mobile_robot_simulator", options),
+        : Node("mobile_simulator", options),
           is_running(false),
-          th(0.0),
-          message_received(false) {
-
-        // Set the 'use_sim_time' parameter to true within the node
-        this->set_parameter(rclcpp::Parameter("use_sim_time", true));
+          th(0.0) {
 
         // Declare and get parameters
         this->declare_parameter<double>("publish_rate", 10.0);
-        this->declare_parameter<std::string>("velocity_topic", "cmd_vel");
-        this->declare_parameter<std::string>("odometry_topic", "pose");
-        this->declare_parameter<std::string>("marker_topic", "robopose");
-        this->declare_parameter<std::string>("odom_frame", "odom");
-        this->declare_parameter<std::string>("base_frame", "base_link");
 
-        // Declare and get initial pose parameters
-        this->declare_parameter<double>("initial_x", 0.0);
-        this->declare_parameter<double>("initial_y", 0.0);
-        this->declare_parameter<double>("initial_theta", 0.0);
+        this->declare_parameter<std::string>("velocity_topic", "cmd_vel");
+        this->declare_parameter<std::string>("odometry_topic", "odom");
+        this->declare_parameter<std::string>("reference_topic", "ref");
+        this->declare_parameter<std::string>("heading_topic", "heading");
+
+        this->declare_parameter<std::string>("position_topic", "fix");
+        this->declare_parameter<double>("latitude", 0.0);
+        this->declare_parameter<double>("longitude", 0.0);
+        this->declare_parameter<double>("heading", 0.0);
 
         this->get_parameter("publish_rate", publish_rate);
+
         this->get_parameter("velocity_topic", velocity_topic_);
         this->get_parameter("odometry_topic", odometry_topic_);
-        this->get_parameter("marker_topic", marker_topic_);
-        this->get_parameter("odom_frame", odom_frame);
-        this->get_parameter("base_frame", base_frame);
+        this->get_parameter("reference_topic", reference_topic_);
+        this->get_parameter("heading_topic", heading_topic_);
 
-        this->get_parameter("initial_x", initial_x_);
-        this->get_parameter("initial_y", initial_y_);
-        this->get_parameter("initial_theta", initial_theta_);
+        this->get_parameter("position_topic", position_topic_);
+        this->get_parameter("latitude", latitude_);
+        this->get_parameter("longitude", longitude_);
+        this->get_parameter("heading", heading_);
 
-        // Create publishers and subscribers
-        odom_pub = this->create_publisher<nav_msgs::msg::Odometry>(odom_topic(), 50);
-        vel_sub = this->create_subscription<geometry_msgs::msg::Twist>(
-            velocity_topic_, 5, std::bind(&MobileRobotSimulator::vel_callback, this, std::placeholders::_1));
+        // Create subscribers
+        vel_sub = this->create_subscription<geometry_msgs::msg::Twist>(velocity_topic_, 5, std::bind(&MobileRobotSimulator::vel_callback, this, std::placeholders::_1));
+        odom_sub = this->create_subscription<nav_msgs::msg::Odometry>(odometry_topic_, 5, std::bind(&MobileRobotSimulator::odom_callback, this, std::placeholders::_1));
+        ref_sub = this->create_subscription<sensor_msgs::msg::NavSatFix>(reference_topic_, 5, std::bind(&MobileRobotSimulator::ref_callback, this, std::placeholders::_1));
 
-        // Create marker publisher
-        marker_pub = this->create_publisher<visualization_msgs::msg::Marker>(marker_topic_, 10);
+        // Fill the pose message
+        pose.header.frame_id = "world";
+        pose.latitude = latitude_;
+        pose.longitude = longitude_;
+        pose.altitude = 0.0;
+
+        // Fill the heading message
+        heading.data = heading_;
+
+
+        // Create publishers
+        gps_pub = this->create_publisher<sensor_msgs::msg::NavSatFix>(position_topic_, 10);
+        heading_pub = this->create_publisher<std_msgs::msg::Float32>(heading_topic_, 10);
 
         // Create clock publisher
         clock_pub_ = this->create_publisher<rosgraph_msgs::msg::Clock>("/clock", 10);
-
-        // Initialize odometry with the initial pose
-        odom.header.frame_id = odom_frame;
-        odom.child_frame_id = base_frame;
-        odom.pose.pose.position.x = initial_x_;
-        odom.pose.pose.position.y = initial_y_;
-        odom.pose.pose.position.z = 0.0;
-        th = initial_theta_;
-
-        tf2::Quaternion q;
-        q.setRPY(0, 0, th);
-        odom.pose.pose.orientation = tf2::toMsg(q);
-
-        // Initialize tf broadcaster
-        tf_broadcaster = std::make_shared<tf2_ros::TransformBroadcaster>(this);
 
         // Initialize simulated_time_
         simulated_time_ = this->get_clock()->now();
@@ -95,6 +246,7 @@ public:
             std::chrono::duration_cast<std::chrono::nanoseconds>(duration),
             std::bind(&MobileRobotSimulator::update_loop, this));
         is_running = true;
+
         RCLCPP_INFO(this->get_logger(), "Started mobile robot simulator update loop, listening on '%s' topic", velocity_topic_.c_str());
     }
 
@@ -105,164 +257,77 @@ public:
     }
 
 private:
-    // Helper functions to get topic names
-    std::string velocity_topic() const {
-        return velocity_topic_;
-    }
-
-    std::string odom_topic() const {
-        return odometry_topic_;
-    }
-
-    std::string marker_topic() const {
-        return marker_topic_;
-    }
-
     void update_loop() {
         // Increment simulated_time_ by the loop duration
         simulated_time_ += rclcpp::Duration::from_seconds(1.0 / publish_rate);
-
         // Publish Clock message
         rosgraph_msgs::msg::Clock clock_msg;
         clock_msg.clock = simulated_time_;
         clock_pub_->publish(clock_msg);
-
         last_update = simulated_time_;
-
         // Update the timestamp
-        odom.header.stamp = last_update;
-        odom_trans.header.stamp = last_update;
-
-        // Publish odometry and transform
-        odom_pub->publish(odom);
-        get_tf_from_odom(odom);
-        tf_broadcaster->sendTransform(odom_trans);
-        message_received = false;
-
-        // Publish the marker
-        publish_marker();
+        pose.header.stamp = simulated_time_;
+        odom.header.stamp = simulated_time_;
+        //publish
+        gps_pub->publish(pose);
+        heading_pub->publish(heading);
     }
 
     void update_odom_from_vel(const geometry_msgs::msg::Twist& vel, const rclcpp::Duration& time_diff) {
         double dt = time_diff.seconds();
-
         // Compute odometry
         double delta_x = (vel.linear.x * cos(th) - vel.linear.y * sin(th)) * dt;
         double delta_y = (vel.linear.x * sin(th) + vel.linear.y * cos(th)) * dt;
         double delta_th = vel.angular.z * dt;
-
         // Update odometry
         odom.pose.pose.position.x += delta_x;
         odom.pose.pose.position.y += delta_y;
         th += delta_th;
-
         // Normalize th to [-pi, pi]
         th = std::atan2(std::sin(th), std::cos(th));
-
         // Set orientation
         tf2::Quaternion q;
         q.setRPY(0, 0, th);
         odom.pose.pose.orientation = tf2::toMsg(q);
-
         // Set velocity
         odom.twist.twist = vel;
+        convert_odom_to_pose();
+        heading.data = th;
     }
 
-    void get_tf_from_odom(const nav_msgs::msg::Odometry& odom_msg) {
-        geometry_msgs::msg::TransformStamped odom_tf;
-        odom_tf.header = odom_msg.header;
-        odom_tf.child_frame_id = odom_msg.child_frame_id;
-        odom_tf.transform.translation.x = odom_msg.pose.pose.position.x;
-        odom_tf.transform.translation.y = odom_msg.pose.pose.position.y;
-        odom_tf.transform.translation.z = odom_msg.pose.pose.position.z;
-        odom_tf.transform.rotation = odom_msg.pose.pose.orientation;
-
-        odom_trans = odom_tf;
+    void convert_odom_to_pose() {
+        double lat, lon, alt;
+        std::tie(lat, lon, alt) = loc::enu_to_gps(odom.pose.pose.position.x, odom.pose.pose.position.y, 0, latitude_, longitude_, 0);
+        //update pose
+        pose.latitude = lat;
+        pose.longitude = lon;
     }
+
 
     void vel_callback(const geometry_msgs::msg::Twist::SharedPtr msg) {
         measure_time = simulated_time_;
         rclcpp::Duration dt = measure_time - last_vel;
         last_vel = measure_time;
         if (dt >= rclcpp::Duration::from_seconds(0.5)) dt = rclcpp::Duration::from_seconds(0.1);
-        message_received = true;
         update_odom_from_vel(*msg, dt);
     }
 
-    void publish_marker() {
-        // Set the frame ID and timestamp
-        marker.header.frame_id = odom_frame;
-        marker.header.stamp = simulated_time_;
-
-        // Set the namespace and id for this marker
-        marker.ns = this->get_namespace();  // Use the node's namespace
-        marker.id = 0;
-
-        // Set the marker type
-        marker.type = visualization_msgs::msg::Marker::ARROW;
-
-        // Set the marker action
-        marker.action = visualization_msgs::msg::Marker::ADD;
-
-        // Set the pose of the marker (odometry pose)
-        marker.pose = odom.pose.pose;
-
-        // Set the scale of the marker
-        marker.scale.x = 0.5;  // Length of the arrow
-        marker.scale.y = 0.1;  // Width of the arrow shaft
-        marker.scale.z = 0.1;  // Height of the arrow shaft
-
-        // Set the color of the marker
-        marker.color.r = 0.0f;
-        marker.color.g = 1.0f;  // Green color
-        marker.color.b = 0.0f;
-        marker.color.a = 1.0f;  // Fully opaque
-
-        // Set the lifetime of the marker
-        marker.lifetime = rclcpp::Duration::from_seconds(0);  // 0 means marker persists until overwritten
-
-        // Publish the marker
-        marker_pub->publish(marker);
+    void odom_callback(const nav_msgs::msg::Odometry::SharedPtr msg) {
+        measure_time = simulated_time_;
+        rclcpp::Duration dt = measure_time - last_update;
+        last_update = measure_time;
+        if (dt >= rclcpp::Duration::from_seconds(0.5)) dt = rclcpp::Duration::from_seconds(0.1);
+        odom = *msg;
     }
 
-    // Parameters
-    double publish_rate;
-    std::string velocity_topic_;
-    std::string odometry_topic_;
-    std::string marker_topic_;
-    std::string odom_frame;
-    std::string base_frame;
+    void ref_callback(const sensor_msgs::msg::NavSatFix::SharedPtr msg) {
+        measure_time = simulated_time_;
+        rclcpp::Duration dt = measure_time - last_update;
+        last_update = measure_time;
+        if (dt >= rclcpp::Duration::from_seconds(0.5)) dt = rclcpp::Duration::from_seconds(0.1);
+        ref = *msg;
+    }
 
-    // Initial pose parameters
-    double initial_x_;
-    double initial_y_;
-    double initial_theta_;
-
-    // Odometry and Transform Data
-    nav_msgs::msg::Odometry odom;
-    geometry_msgs::msg::TransformStamped odom_trans;
-
-    // Time Variables
-    rclcpp::Time last_vel;
-    rclcpp::Time last_update;
-    rclcpp::Time measure_time;
-    rclcpp::Time simulated_time_;  // Simulated time
-
-    // State Variables
-    bool is_running;
-    double th;
-    bool message_received;
-
-    // ROS2 Interfaces
-    rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom_pub;
-    rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr marker_pub;  // Marker publisher
-    rclcpp::Publisher<rosgraph_msgs::msg::Clock>::SharedPtr clock_pub_;      // Clock publisher
-    rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr vel_sub;
-    std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster;
-    rclcpp::TimerBase::SharedPtr loop_timer;
-
-    // Marker
-    visualization_msgs::msg::Marker marker;  // Marker message
 };
 
 int main(int argc, char** argv) {
