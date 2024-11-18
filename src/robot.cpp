@@ -184,6 +184,7 @@ private:
     std::string velocity_topic_;                // Topic name for velocity commands
     double latitude_;                           // Initial latitude of the robot
     double longitude_;                          // Initial longitude of the robot
+    double altitude_;                           // Initial altitude of the robot
     double heading_;                            // Initial heading (orientation) of the robot in radians
     std::string position_topic_;                // Topic name for GPS position data
     std::string heading_topic_;                 // Topic name for heading data
@@ -225,6 +226,7 @@ public:
         this->declare_parameter<std::string>("position_topic", "fix");        // Default GPS position topic
         this->declare_parameter<double>("latitude", 0.0);                     // Default latitude
         this->declare_parameter<double>("longitude", 0.0);                    // Default longitude
+        this->declare_parameter<double>("altitude", 0.0);                     // Default altitude
         this->declare_parameter<double>("heading", 0.0);                      // Default heading in degrees
 
         // Retrieve parameter values
@@ -236,6 +238,7 @@ public:
         this->get_parameter("position_topic", position_topic_);
         this->get_parameter("latitude", latitude_);
         this->get_parameter("longitude", longitude_);
+        this->get_parameter("altitude", altitude_);
         this->get_parameter("heading", heading_);
 
         // Convert initial heading from degrees to radians
@@ -245,7 +248,7 @@ public:
         odom.header.frame_id = "world";
         odom.pose.pose.position.x = 0.0;
         odom.pose.pose.position.y = 0.0;
-        odom.pose.pose.position.z = 0.0;
+        odom.pose.pose.position.z = 0.0; // Start at zero altitude in ENU coordinates
 
         tf2::Quaternion q;
         q.setRPY(0, 0, th);
@@ -270,7 +273,7 @@ public:
         pose.header.frame_id = "world";    // Set the coordinate frame to "world"
         pose.latitude = latitude_;         // Set initial latitude
         pose.longitude = longitude_;       // Set initial longitude
-        pose.altitude = 0.0;               // Set initial altitude to 0
+        pose.altitude = altitude_;         // Set initial altitude
 
         // Initialize the heading message with the initial heading value in degrees
         heading.data = heading_; // Heading in degrees
@@ -342,6 +345,9 @@ private:
         rosgraph_msgs::msg::Clock clock_msg;
         clock_msg.clock = simulated_time_;
         clock_pub_->publish(clock_msg);
+
+        //print lat, lon, alt
+        // RCLCPP_INFO(this->get_logger(), "Lat: %f, Lon: %f, Alt: %f", pose.latitude, pose.longitude, pose.altitude);
     }
 
     // Function to update odometry based on incoming velocity commands
@@ -352,10 +358,12 @@ private:
         double delta_x = (vel_msg.linear.x * std::cos(th) - vel_msg.linear.y * std::sin(th)) * dt;
         double delta_y = (vel_msg.linear.x * std::sin(th) + vel_msg.linear.y * std::cos(th)) * dt;
         double delta_th = vel_msg.angular.z * dt;
+        double delta_z = vel_msg.linear.z * dt; // Compute vertical displacement
 
         // Update the odometry pose with the computed deltas
         odom.pose.pose.position.x += delta_x;
         odom.pose.pose.position.y += delta_y;
+        odom.pose.pose.position.z += delta_z; // Update altitude based on vertical movement
         th += delta_th; // Update the orientation angle in radians
 
         // Normalize the orientation angle to the range [-pi, pi]
@@ -383,14 +391,15 @@ private:
         std::tie(lat, lon, alt) = loc::enu_to_gps(
             odom.pose.pose.position.x,    // East coordinate
             odom.pose.pose.position.y,    // North coordinate
-            0.0,                           // Up coordinate (altitude is set to 0)
-            latitude_,                     // Reference latitude
-            longitude_,                    // Reference longitude
-            0.0                            // Reference altitude
+            odom.pose.pose.position.z,    // Up coordinate (now includes altitude changes)
+            latitude_,                    // Reference latitude
+            longitude_,                   // Reference longitude
+            altitude_                     // Reference altitude
         );
-        // Update the pose message with the new latitude and longitude
+        // Update the pose message with the new latitude, longitude, and altitude
         pose.latitude = lat;
         pose.longitude = lon;
+        pose.altitude = alt;
     }
 
     // Callback function for incoming velocity commands

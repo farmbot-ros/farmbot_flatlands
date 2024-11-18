@@ -26,7 +26,7 @@ def generate_launch_description():
     datum = global_params.get('datum', [0.0, 0.0, 0.0])
     default_base_latitude = datum[0] if len(datum) > 0 else 0.0
     default_base_longitude = datum[1] if len(datum) > 1 else 0.0
-    # Altitude is datum[2], if needed
+    default_base_altitude = datum[2] if len(datum) > 2 else 0.0
 
     default_num_robots = global_params.get('num_robots', 1)
     default_max_distance = global_params.get('max_distance', 200.0)
@@ -43,6 +43,12 @@ def generate_launch_description():
         'base_longitude',
         default_value=str(default_base_longitude),
         description='Base longitude for robot spawning'
+    )
+
+    base_altitude_arg = DeclareLaunchArgument(
+        'base_altitude',
+        default_value=str(default_base_altitude),
+        description='Base altitude for robot spawning'
     )
 
     num_robots_arg = DeclareLaunchArgument(
@@ -69,6 +75,7 @@ def generate_launch_description():
     # Add the launch arguments to the launch description
     ld.add_action(base_latitude_arg)
     ld.add_action(base_longitude_arg)
+    ld.add_action(base_altitude_arg)
     ld.add_action(num_robots_arg)
     ld.add_action(max_distance_arg)
     ld.add_action(min_distance_arg)
@@ -82,6 +89,7 @@ def launch_setup(context, *args, **kwargs):
     # Retrieve the launch configuration variables
     base_latitude = float(LaunchConfiguration('base_latitude').perform(context))
     base_longitude = float(LaunchConfiguration('base_longitude').perform(context))
+    base_altitude = float(LaunchConfiguration('base_altitude').perform(context))
     num_robots = int(LaunchConfiguration('num_robots').perform(context))
     max_distance = float(LaunchConfiguration('max_distance').perform(context))
     min_distance = float(LaunchConfiguration('min_distance').perform(context))
@@ -99,6 +107,8 @@ def launch_setup(context, *args, **kwargs):
 
         robot_latitude = base_latitude + delta_latitude
         robot_longitude = base_longitude + delta_longitude
+        # robot_altitude = base_altitude+random.uniform(0.5,1.5)
+        robot_altitude = base_altitude
 
         namespace = f'robot{i}'
         heading = random.uniform(0, 360)
@@ -118,6 +128,7 @@ def launch_setup(context, *args, **kwargs):
                 {'heading_topic': 'heading'},
                 {'latitude': robot_latitude},
                 {'longitude': robot_longitude},
+                {'altitude': robot_altitude},
                 {'heading': heading}
             ],
             output='screen'
