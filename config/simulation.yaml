@@ -1,17 +1,25 @@
+global:
+    ros__parameters:
+        # [latitude, longitude, altitude]
+        datum: [51.937587, 5.705458, 53.801823]
+        num_robots: 3
+        max_distance: 100.0
+        min_distance: 50.0
+
 robots:
-    - namespace: robot1
+    - namespace: robot0
       initial_pose:
           latitude: 51.93778674075392
           longitude: 5.70576672207017
           altitude: 53.80182320303043
           heading: 45.0
-    - namespace: robot2
+    - namespace: robot1
       initial_pose:
           latitude: 51.93724974075392
           longitude: 5.70526372207017
           altitude: 53.80182320303043
           heading: 135.0
-    - namespace: robot3
+    - namespace: robot2
       initial_pose:
           latitude: 51.93704974075392
           longitude: 5.70506372207017

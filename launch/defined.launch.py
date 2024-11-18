@@ -1,5 +1,4 @@
 # multi_robot_launch.py
-
 import os
 import yaml
 
