@@ -40,7 +40,7 @@ def generate_launch_description():
                 {'odometry_topic': 'loc/odom'},
                 {'reference_topic': 'loc/ref/geo'},
                 {'position_topic': 'gps_center'},
-                {'heading_topic': 'angle_rad'},
+                {'heading_topic': 'heading'},
                 {'latitude': latitude},
                 {'longitude': longitude},
                 {'heading': heading}

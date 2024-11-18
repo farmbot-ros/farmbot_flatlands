@@ -16,6 +16,7 @@
 // Standard Libraries
 #include <functional>                      // Include for std::function
 #include <rclcpp/logging.hpp>              // Include for ROS2 logging
+#include <rclcpp/visibility_control.hpp>
 #include <string>                          // Include for std::string
 #include <cmath>                           // Include for math functions
 #include <tf2/LinearMath/Matrix3x3.h>      // Include Matrix3x3 for rotation matrices
@@ -174,7 +175,8 @@ namespace loc {  // Define a namespace 'loc' to encapsulate localization-related
     }
 } // End of namespace loc
 
-// Define the MobileRobotSimulator class inheriting from rclcpp::Node
+
+// Class definition for the MobileRobotSimulator node
 class MobileRobotSimulator : public rclcpp::Node {
 private:
     // Parameters
@@ -182,18 +184,15 @@ private:
     std::string velocity_topic_;                // Topic name for velocity commands
     double latitude_;                           // Initial latitude of the robot
     double longitude_;                          // Initial longitude of the robot
-    double heading_;                            // Initial heading (orientation) of the robot
-    std::string odometry_topic_;                // Topic name for odometry data
+    double heading_;                            // Initial heading (orientation) of the robot in radians
     std::string position_topic_;                // Topic name for GPS position data
-    std::string reference_topic_;               // Topic name for reference GPS data
     std::string heading_topic_;                 // Topic name for heading data
 
     // ROS2 Messages
     geometry_msgs::msg::Twist vel;              // Twist message to store velocity commands
     nav_msgs::msg::Odometry odom;               // Odometry message to store robot state
     sensor_msgs::msg::NavSatFix pose;           // NavSatFix message to store current GPS pose
-    sensor_msgs::msg::NavSatFix ref;            // NavSatFix message to store reference GPS pose
-    std_msgs::msg::Float32 heading;             // Float32 message to store heading information
+    std_msgs::msg::Float32 heading;             // Float32 message to store heading information in degrees
 
     // Time Variables
     rclcpp::Time last_vel;                      // Timestamp of the last velocity command
@@ -203,7 +202,7 @@ private:
 
     // State Variables
     bool is_running;                            // Flag to indicate if the simulator is running
-    double th;                                  // Current orientation angle (theta)
+    double th;                                  // Current orientation angle (theta) in radians
 
     // ROS2 Interfaces
     rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr vel_sub;       // Subscriber for velocity commands
@@ -226,7 +225,7 @@ public:
         this->declare_parameter<std::string>("position_topic", "fix");        // Default GPS position topic
         this->declare_parameter<double>("latitude", 0.0);                     // Default latitude
         this->declare_parameter<double>("longitude", 0.0);                    // Default longitude
-        this->declare_parameter<double>("heading", 0.0);                      // Default heading
+        this->declare_parameter<double>("heading", 0.0);                      // Default heading in degrees
 
         // Retrieve parameter values
         this->get_parameter("publish_rate", publish_rate);
@@ -239,21 +238,18 @@ public:
         this->get_parameter("longitude", longitude_);
         this->get_parameter("heading", heading_);
 
-        // Initialize variables properly
-        is_running = false;
-        th = heading_; // Initialize th with the initial heading (assuming in radians)
+        // Convert initial heading from degrees to radians
+        th = heading_ * M_PI / 180.0; // Initialize th with the initial heading in radians
 
         // Initialize odometry message
         odom.header.frame_id = "world";
         odom.pose.pose.position.x = 0.0;
         odom.pose.pose.position.y = 0.0;
         odom.pose.pose.position.z = 0.0;
-        // odom.pose.pose.orientation = tf2::toMsg(tf2::Quaternion(0, 0, th)); // Set initial orientation
-        odom.pose.pose.orientation.w = cos(th / 2);
-        odom.pose.pose.orientation.x = 0.0;
-        odom.pose.pose.orientation.y = 0.0;
-        odom.pose.pose.orientation.z = sin(th / 2);
 
+        tf2::Quaternion q;
+        q.setRPY(0, 0, th);
+        odom.pose.pose.orientation = tf2::toMsg(q);
 
         odom.twist.twist.linear.x = 0.0;
         odom.twist.twist.linear.y = 0.0;
@@ -276,8 +272,8 @@ public:
         pose.longitude = longitude_;       // Set initial longitude
         pose.altitude = 0.0;               // Set initial altitude to 0
 
-        // Initialize the heading message with the initial heading value
-        heading.data = th;
+        // Initialize the heading message with the initial heading value in degrees
+        heading.data = heading_; // Heading in degrees
 
         // Create subscriber for velocity commands
         vel_sub = this->create_subscription<geometry_msgs::msg::Twist>(
@@ -360,7 +356,7 @@ private:
         // Update the odometry pose with the computed deltas
         odom.pose.pose.position.x += delta_x;
         odom.pose.pose.position.y += delta_y;
-        th += delta_th; // Update the orientation angle
+        th += delta_th; // Update the orientation angle in radians
 
         // Normalize the orientation angle to the range [-pi, pi]
         th = std::atan2(std::sin(th), std::cos(th));
@@ -376,8 +372,8 @@ private:
         // Convert the updated odometry to GPS coordinates
         convert_odom_to_pose();
 
-        // Update the heading message with the current orientation angle
-        heading.data = th;
+        // Update the heading message with the current orientation angle converted to degrees
+        heading.data = th * 180.0 / M_PI; // Convert radians to degrees
     }
 
     // Function to convert odometry data to GPS pose

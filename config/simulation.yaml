@@ -4,10 +4,10 @@ robots:
           latitude: 51.93788674075392
           longitude: 5.70586672207017
           altitude: 53.80182320303043
-          heading: 1.5707963267948966
+          heading: 45.0
     - namespace: robot2
       initial_pose:
           latitude: 51.93724974075392
           longitude: 5.70526372207017
           altitude: 53.80182320303043
-          heading: 0.5707963267948966
+          heading: 135.0
