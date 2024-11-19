@@ -1,4 +1,3 @@
-
 #ifndef GPS_PLUGIN_HPP
 #define GPS_PLUGIN_HPP
 
@@ -82,7 +81,7 @@ namespace sim {
                 sensor_msgs::msg::NavSatFix fix_;
                 nav_msgs::msg::Odometry odom_;
                 rclcpp::Publisher<sensor_msgs::msg::NavSatFix>::SharedPtr gps_pub_;
-                rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr heading_pub;
+                rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr heading_pub_;
 
                 // Reference coordinates for ENU
                 double lat_ref_;
@@ -93,8 +92,17 @@ namespace sim {
                 rclcpp::Time last_time_;
                 sensor_msgs::msg::NavSatFix last_fix_;
 
+                // Previous position for heading calculation
+                double prev_x_;
+                double prev_y_;
+                bool first_tick_;
+
+                // Heading variables
+                double heading_deg = 0.0;
+                double heading_rad = 0.0;
             public:
                 GPSPlugin() = default;
+
                 GPSPlugin(rclcpp::Node::SharedPtr node, std::string topic, const sensor_msgs::msg::NavSatFix & fix):
                     node_(node),
                     topic_(topic),
@@ -102,14 +110,18 @@ namespace sim {
                     lat_ref_(fix.latitude),
                     lon_ref_(fix.longitude),
                     alt_ref_(fix.altitude),
-                    last_time_(node_->now())
+                    last_time_(node_->now()),
+                    prev_x_(0.0),
+                    prev_y_(0.0),
+                    first_tick_(true)
                 {
-                    RCUTILS_LOG_INFO("GPS Plugin initialized");
-                    //create publisher
-                    gps_pub_ = node_->create_publisher<sensor_msgs::msg::NavSatFix>(topic_, 10);
+                    RCLCPP_INFO(node_->get_logger(), "GPS Plugin initialized");
+                    // Create publishers
+                    gps_pub_ = node_->create_publisher<sensor_msgs::msg::NavSatFix>(topic_ + "/fix", 10);
+                    heading_pub_ = node_->create_publisher<std_msgs::msg::Float32>(topic + "/heading", 10);
                 }
 
-                void tick(const rclcpp::Time & current_time, const nav_msgs::msg::Odometry & odom) {
+                void tick(const rclcpp::Time & current_time, const nav_msgs::msg::Odometry & odom, bool new_data = true) {
                     odom_ = odom;
                     // Convert ENU coordinates to GPS
                     double lat, lon, alt;
@@ -128,17 +140,46 @@ namespace sim {
                     fix_.altitude = alt;
                     fix_.header.stamp = current_time;
 
+                    // Publish GPS data
+                    gps_pub_->publish(fix_);
+
+                    // Calculate and publish heading
+                    if (first_tick_) {
+                        // Initialize previous positions
+                        prev_x_ = odom_.pose.pose.position.x;
+                        prev_y_ = odom_.pose.pose.position.y;
+                        first_tick_ = false;
+                    } else {
+                        double delta_x = odom_.pose.pose.position.x - prev_x_;
+                        double delta_y = odom_.pose.pose.position.y - prev_y_;
+
+                        double distance = std::sqrt(delta_x * delta_x + delta_y * delta_y);
+                        if (distance > 0.01) {
+                            heading_rad = std::atan2(delta_y, delta_x);
+                            heading_deg = heading_rad * 180.0 / M_PI;
+                        }
+
+                        // Normalize heading to [0, 360)
+                        if (heading_deg < 0) {
+                            heading_deg += 360.0;
+                        }
+
+                        // Create and publish heading message
+                        std_msgs::msg::Float32 heading_msg;
+                        heading_msg.data = heading_deg;
+                        heading_pub_->publish(heading_msg);
+
+                        // Update previous positions
+                        prev_x_ = odom_.pose.pose.position.x;
+                        prev_y_ = odom_.pose.pose.position.y;
+                    }
+
                     // Update last time
                     last_time_ = current_time;
-
-                    // RCLCPP_INFO(node_->get_logger(), "GPS - Lat: %f, Lon: %f, Alt: %f", lat, lon, alt);
-                    //print lat lon alt references
-                    // RCLCPP_INFO(node_->get_logger(), "GPS - Lat Ref: %f, Lon Ref: %f, Alt Ref: %f", lat_ref_, lon_ref_, alt_ref_);
-                    gps_pub_->publish(fix_);
                 }
         };
 
     } // namespace plugins
-} // namespace mobile_robot_simulator
+} // namespace sim
 
 #endif // GPS_PLUGIN_HPP

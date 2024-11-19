@@ -122,12 +122,6 @@ def launch_setup(context, *args, **kwargs):
             namespace=namespace,
             parameters=[
                 {'publish_rate': 10.0},
-                {'velocity_topic': 'cmd_vel'},
-                {'odometry_topic': 'loc/odom'},
-                {'reference_topic': 'loc/ref/geo'},
-                {'position_topic': 'gnss/fix'},
-                {'heading_topic': 'gnss/heading'},
-                {'imu_topic': 'imu/data'},
                 {'latitude': robot_latitude},
                 {'longitude': robot_longitude},
                 {'altitude': robot_altitude},

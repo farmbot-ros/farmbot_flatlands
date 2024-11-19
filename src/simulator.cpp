@@ -12,6 +12,7 @@
 
 // TF2 Headers
 #include "tf2/LinearMath/Quaternion.h"
+#include <tf2/LinearMath/Matrix3x3.h>
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
 
 // Standard Libraries
@@ -28,25 +29,23 @@ namespace sim {
     class SIM : public rclcpp::Node {
         private:
             // Robot state
-            nav_msgs::msg::Odometry odom_;
-            std_msgs::msg::Float32 heading_;
-            std_msgs::msg::Float32 theta_;
             sensor_msgs::msg::NavSatFix fix_;
+            nav_msgs::msg::Odometry odom_;
+            std_msgs::msg::Float32 theta_;
 
             // Quaterion
             tf2::Quaternion quat;
 
             // Parameters
             double publish_rate_;
-            std::string velocity_topic_;
+            std::string vel_topic_;
             std::string fix_topic_;
             std::string imu_topic_;
-            std::string heading_topic_;
 
             double latitude_;
             double longitude_;
             double altitude_;
-            double heading_deg_;
+            double heading_;
 
             // Time tracking
             rclcpp::Time last_update_;
@@ -55,10 +54,10 @@ namespace sim {
             // ROS Interfaces
             rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr vel_sub_;
             rclcpp::Publisher<rosgraph_msgs::msg::Clock>::SharedPtr clock_pub_;
-            rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr heading_pub;
 
             // Timer
             rclcpp::TimerBase::SharedPtr loop_timer_;
+            bool new_message_ = false;
 
             // GPS Plugin
             plugins::GPSPlugin gps_plugin_;
@@ -69,17 +68,14 @@ namespace sim {
         public:
             SIM(const rclcpp::NodeOptions & options = rclcpp::NodeOptions()) : Node("simulator", options) {
                 // Declare and get parameters
-                // Declare and get parameters
                 this->declare_parameter<double>("publish_rate", 10.0);
                 this->get_parameter("publish_rate", publish_rate_);
                 this->declare_parameter<std::string>("velocity_topic", "cmd_vel");
-                this->get_parameter("velocity_topic", velocity_topic_);
-                this->declare_parameter<std::string>("heading_topic", "gnss/heading");
-                this->get_parameter("heading_topic", heading_topic_);
-                this->declare_parameter<std::string>("imu_topic", "imu/data");
+                this->get_parameter("velocity_topic", vel_topic_);
+                this->declare_parameter<std::string>("imu_topic", "imu");
                 this->get_parameter("imu_topic", imu_topic_);
-                this->declare_parameter<std::string>("position_topic", "gnss/fix");
-                this->get_parameter("position_topic", fix_topic_);
+                this->declare_parameter<std::string>("gnss_topic", "gnss");
+                this->get_parameter("gnss_topic", fix_topic_);
                 this->declare_parameter<double>("latitude", 0.0);
                 this->get_parameter("latitude", latitude_);
                 this->declare_parameter<double>("longitude", 0.0);
@@ -87,32 +83,15 @@ namespace sim {
                 this->declare_parameter<double>("altitude", 0.0);
                 this->get_parameter("altitude", altitude_);
                 this->declare_parameter<double>("heading", 0.0);
-                this->get_parameter("heading", heading_deg_);
-
-                // Convert initial heading from degrees to radians
-                theta_.data = heading_deg_ * M_PI / 180.0;
+                this->get_parameter("heading", heading_);
 
                 // Initialize odometry message
                 odom_.header.frame_id = "world";
-                odom_.pose.pose.position.x = 0.0;
-                odom_.pose.pose.position.y = 0.0;
-                odom_.pose.pose.position.z = 0.0;
-
+                theta_.data = heading_ * M_PI / 180.0;
                 quat.setRPY(0, 0, theta_.data);
                 odom_.pose.pose.orientation = tf2::toMsg(quat);
 
-                odom_.twist.twist.linear.x = 0.0;
-                odom_.twist.twist.linear.y = 0.0;
-                odom_.twist.twist.linear.z = 0.0;
-                odom_.twist.twist.angular.x = 0.0;
-                odom_.twist.twist.angular.y = 0.0;
-                odom_.twist.twist.angular.z = 0.0;
-
-                // Initialize heading
-                heading_.data = heading_deg_;
-
-
-                // Initialize pose
+                // Initialize fix message
                 fix_.header.frame_id = "world";
                 fix_.latitude = latitude_;
                 fix_.longitude = longitude_;
@@ -120,9 +99,7 @@ namespace sim {
 
                 RCLCPP_INFO(this->get_logger(), "GPS: Latitude: %f, Longitude: %f, Altitude: %f", fix_.latitude, fix_.longitude, fix_.altitude);
                 // Subscriber for velocity commands
-                vel_sub_ = this->create_subscription<geometry_msgs::msg::Twist>(velocity_topic_, 10, std::bind(&SIM::vel_callback, this, std::placeholders::_1));
-                // heading publisher
-                heading_pub = this->create_publisher<std_msgs::msg::Float32>(heading_topic_, 10);
+                vel_sub_ = this->create_subscription<geometry_msgs::msg::Twist>(vel_topic_, 10, std::bind(&SIM::vel_callback, this, std::placeholders::_1));
                 // Publisher for simulated clock
                 clock_pub_ = this->create_publisher<rosgraph_msgs::msg::Clock>("/clock", 10);
                 // Initialize simulated time
@@ -148,6 +125,7 @@ namespace sim {
         private:
             void vel_callback(const geometry_msgs::msg::Twist::SharedPtr msg){
                 odom_.twist.twist = *msg;
+                new_message_ = true;
             }
 
             void update_loop(){
@@ -157,35 +135,62 @@ namespace sim {
                 // Compute time difference
                 rclcpp::Duration dt = simulated_time_ - last_update_;
                 double delta_t = dt.seconds();
-                if (delta_t <= 0.0) { delta_t = 1.0 / publish_rate_; }
+                if (delta_t <= 0.0) {
+                    delta_t = 1.0 / publish_rate_;
+                }
 
-                // Update robot's position and orientation based on current velocities
-                double delta_x = (odom_.twist.twist.linear.x * std::cos(theta_.data) - odom_.twist.twist.linear.y * std::sin(theta_.data)) * delta_t;
-                double delta_y = (odom_.twist.twist.linear.x * std::sin(theta_.data) + odom_.twist.twist.linear.y * std::cos(theta_.data)) * delta_t;
-                double delta_z = odom_.twist.twist.linear.z * delta_t;
-                double delta_th = odom_.twist.twist.angular.z * delta_t;
+                // Convert current orientation from quaternion to tf2 Quaternion
+                tf2::Quaternion current_orientation;
+                tf2::fromMsg(odom_.pose.pose.orientation, current_orientation);
 
-                odom_.pose.pose.position.x += delta_x;
-                odom_.pose.pose.position.y += delta_y;
-                odom_.pose.pose.position.z += delta_z;
+                // Extract linear velocity from odometry (robot frame)
+                tf2::Vector3 linear_vel(odom_.twist.twist.linear.x,
+                                        odom_.twist.twist.linear.y,
+                                        odom_.twist.twist.linear.z);
 
-                theta_.data += delta_th;
-                theta_.data = std::atan2(std::sin(theta_.data), std::cos(theta_.data)); // Normalize angle
+                // Transform linear velocity to world frame using current orientation
+                tf2::Vector3 linear_vel_world = tf2::quatRotate(current_orientation, linear_vel);
 
-                // Update orientation quaternion
-                quat.setRPY(0, 0, theta_.data);
-                odom_.pose.pose.orientation = tf2::toMsg(quat);
+                // Compute delta position in world frame
+                tf2::Vector3 delta_pos = linear_vel_world * delta_t;
 
-                // Update heading
-                heading_.data = theta_.data * 180.0 / M_PI;
-                heading_pub->publish(heading_);
+                // Update position
+                odom_.pose.pose.position.x += delta_pos.x();
+                odom_.pose.pose.position.y += delta_pos.y();
+                odom_.pose.pose.position.z += delta_pos.z();
+
+                // Extract angular velocity from odometry (robot frame)
+                double omega_x = odom_.twist.twist.angular.x;
+                double omega_y = odom_.twist.twist.angular.y;
+                double omega_z = odom_.twist.twist.angular.z;
+
+                // Create angular velocity vector
+                tf2::Vector3 angular_vel(omega_x, omega_y, omega_z);
+                double angular_speed = angular_vel.length();
+
+                // Compute the change in orientation as a quaternion
+                tf2::Quaternion delta_q;
+                if (angular_speed > 1e-6) { // Avoid division by zero
+                    tf2::Vector3 rotation_axis = angular_vel.normalized();
+                    double rotation_angle = angular_speed * delta_t;
+                    delta_q.setRotation(rotation_axis, rotation_angle);
+                } else {
+                    delta_q = tf2::Quaternion(0, 0, 0, 1); // x, y, z, w
+                }
+
+                // Update the current orientation
+                current_orientation = current_orientation * delta_q;
+                current_orientation.normalize();
+
+                // Update orientation in odometry
+                odom_.pose.pose.orientation = tf2::toMsg(current_orientation);
 
                 // Update timestamps in odometry and pose
                 odom_.header.stamp = simulated_time_;
 
                 // Call plugins' tick functions
-                gps_plugin_.tick(simulated_time_, odom_);
-                imu_plugin_.tick(simulated_time_, odom_);
+                gps_plugin_.tick(simulated_time_, odom_, new_message_);
+                imu_plugin_.tick(simulated_time_, odom_, new_message_);
 
                 // Publish simulated clock
                 rosgraph_msgs::msg::Clock clock_msg;
@@ -194,7 +199,14 @@ namespace sim {
 
                 // Update last_update_
                 last_update_ = simulated_time_;
+                //set twist to zero
+                auto zero_twist = geometry_msgs::msg::Twist();
+                odom_.twist.twist = zero_twist;
+
+                // set new_message_ to false
+                new_message_ = false;
             }
+
     };
 } // namespace mobile_robot_simulator
 

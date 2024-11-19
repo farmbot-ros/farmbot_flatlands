@@ -34,10 +34,10 @@ namespace sim {
                     last_time_(node_->now())
                 {
                     RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "IMU Plugin initialized");
-                    imu_pub_ = node_->create_publisher<sensor_msgs::msg::Imu>(topic_, 10);
+                    imu_pub_ = node_->create_publisher<sensor_msgs::msg::Imu>(topic_ + "/data", 10);
                 }
 
-                void tick(const rclcpp::Time & current_time, nav_msgs::msg::Odometry & odom) {
+                void tick(const rclcpp::Time & current_time, nav_msgs::msg::Odometry & odom, bool new_data = true) {
                     odom_ = odom;
                     // Calculate time difference
                     double delta_t = (current_time - last_time_).seconds();
