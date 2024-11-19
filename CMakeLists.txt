@@ -27,7 +27,6 @@ install(
 
 
 set(executables
-    robot
     visualize
     simulator
 )
