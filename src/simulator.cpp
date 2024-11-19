@@ -74,11 +74,11 @@ namespace sim {
                 this->get_parameter("publish_rate", publish_rate_);
                 this->declare_parameter<std::string>("velocity_topic", "cmd_vel");
                 this->get_parameter("velocity_topic", velocity_topic_);
-                this->declare_parameter<std::string>("heading_topic", "heading");
+                this->declare_parameter<std::string>("heading_topic", "gnss/heading");
                 this->get_parameter("heading_topic", heading_topic_);
                 this->declare_parameter<std::string>("imu_topic", "imu/data");
                 this->get_parameter("imu_topic", imu_topic_);
-                this->declare_parameter<std::string>("position_topic", "fix");
+                this->declare_parameter<std::string>("position_topic", "gnss/fix");
                 this->get_parameter("position_topic", fix_topic_);
                 this->declare_parameter<double>("latitude", 0.0);
                 this->get_parameter("latitude", latitude_);
