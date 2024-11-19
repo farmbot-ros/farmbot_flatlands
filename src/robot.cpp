@@ -4,6 +4,7 @@
 #include "geometry_msgs/msg/twist.hpp"             // Include Twist message for velocity commands
 #include "nav_msgs/msg/odometry.hpp"               // Include Odometry message for robot state
 #include "sensor_msgs/msg/nav_sat_fix.hpp"         // Include NavSatFix message for GPS data
+#include "sensor_msgs/msg/imu.hpp"                 // Include IMU message for IMU data
 #include "std_msgs/msg/float32.hpp"                // Include Float32 message for simple float data
 #include "visualization_msgs/msg/marker.hpp"       // Include Marker message for visualization in RViz
 #include "rosgraph_msgs/msg/clock.hpp"             // Include Clock message for simulated time
@@ -29,73 +30,6 @@ namespace loc {  // Define a namespace 'loc' to encapsulate localization-related
     const double R = 6378137.0;                // Earth's radius in meters (equatorial radius)
     const double f = 1.0 / 298.257223563;      // Flattening factor of the Earth
     const double e2 = 2 * f - f * f;           // Square of the Earth's eccentricity
-
-    // Function to convert GPS coordinates (latitude, longitude, altitude) to ECEF (Earth-Centered, Earth-Fixed) coordinates
-    std::tuple<double, double, double> gps_to_ecef(double latitude, double longitude, double altitude) {
-        // Convert latitude and longitude from degrees to radians
-        double lat_rad = latitude * M_PI / 180.0;
-        double lon_rad = longitude * M_PI / 180.0;
-        double cosLat = std::cos(lat_rad);      // Cosine of latitude
-        double sinLat = std::sin(lat_rad);      // Sine of latitude
-        double cosLong = std::cos(lon_rad);     // Cosine of longitude
-        double sinLong = std::sin(lon_rad);     // Sine of longitude
-
-        // Calculate the prime vertical radius of curvature
-        double N = R / std::sqrt(1.0 - e2 * sinLat * sinLat);
-
-        // Calculate ECEF coordinates
-        double x = (N + altitude) * cosLat * cosLong;
-        double y = (N + altitude) * cosLat * sinLong;
-        double z = (N * (1 - e2) + altitude) * sinLat;
-
-        // Return the ECEF coordinates as a tuple
-        return std::make_tuple(x, y, z);
-    }
-
-    // Function to convert ECEF coordinates to ENU (East, North, Up) coordinates relative to a datum
-    std::tuple<double, double, double> ecef_to_enu(std::tuple<double, double, double> ecef, std::tuple<double, double, double> datum) {
-        double x, y, z;
-        std::tie(x, y, z) = ecef;  // Unpack ECEF coordinates
-        double latRef, longRef, altRef;
-        std::tie(latRef, longRef, altRef) = datum;  // Unpack datum coordinates
-
-        // Convert reference latitude and longitude from degrees to radians
-        double latRef_rad = latRef * M_PI / 180.0;
-        double longRef_rad = longRef * M_PI / 180.0;
-        double cosLatRef = std::cos(latRef_rad);
-        double sinLatRef = std::sin(latRef_rad);
-        double cosLongRef = std::cos(longRef_rad);
-        double sinLongRef = std::sin(longRef_rad);
-
-        // Calculate the prime vertical radius of curvature at the reference point
-        double NRef = R / std::sqrt(1.0 - e2 * sinLatRef * sinLatRef);
-
-        // Calculate the reference ECEF coordinates based on the datum
-        double x0 = (NRef + altRef) * cosLatRef * cosLongRef;
-        double y0 = (NRef + altRef) * cosLatRef * sinLongRef;
-        double z0 = (NRef * (1 - e2) + altRef) * sinLatRef;
-
-        // Compute differences between the target ECEF coordinates and the reference ECEF coordinates
-        double dx = x - x0;
-        double dy = y - y0;
-        double dz = z - z0;
-
-        // Calculate ENU coordinates using rotation matrices
-        double xEast = -sinLongRef * dx + cosLongRef * dy;
-        double yNorth = -cosLongRef * sinLatRef * dx - sinLatRef * sinLongRef * dy + cosLatRef * dz;
-        double zUp = cosLatRef * cosLongRef * dx + cosLatRef * sinLongRef * dy + sinLatRef * dz;
-
-        // Return the ENU coordinates as a tuple
-        return std::make_tuple(xEast, yNorth, zUp);
-    }
-
-    // Function to convert GPS coordinates to ENU coordinates relative to a datum
-    std::tuple<double, double, double> gps_to_enu(double latitude, double longitude, double altitude, double latRef, double longRef, double altRef) {
-        // First, convert GPS to ECEF coordinates
-        std::tuple<double, double, double> ecef = gps_to_ecef(latitude, longitude, altitude);
-        // Then, convert ECEF to ENU coordinates using the datum
-        return ecef_to_enu(ecef, std::make_tuple(latRef, longRef, altRef));
-    }
 
     // Function to convert ENU coordinates to ECEF coordinates relative to a datum
     std::tuple<double, double, double> enu_to_ecef(std::tuple<double, double, double> enu, std::tuple<double, double, double> datum) {
@@ -175,66 +109,68 @@ namespace loc {  // Define a namespace 'loc' to encapsulate localization-related
     }
 } // End of namespace loc
 
-
 // Class definition for the MobileRobotSimulator node
 class MobileRobotSimulator : public rclcpp::Node {
 private:
     // Parameters
-    double publish_rate;                        // Rate at which data is published
-    std::string velocity_topic_;                // Topic name for velocity commands
-    double latitude_;                           // Initial latitude of the robot
-    double longitude_;                          // Initial longitude of the robot
-    double altitude_;                           // Initial altitude of the robot
-    double heading_;                            // Initial heading (orientation) of the robot in radians
-    std::string position_topic_;                // Topic name for GPS position data
-    std::string heading_topic_;                 // Topic name for heading data
+    double publish_rate;
+    std::string velocity_topic_;
+    std::string imu_topic_;
+    double latitude_;
+    double longitude_;
+    double altitude_;
+    double heading_;
+    std::string position_topic_;
+    std::string heading_topic_;
 
     // ROS2 Messages
-    geometry_msgs::msg::Twist vel;              // Twist message to store velocity commands
-    nav_msgs::msg::Odometry odom;               // Odometry message to store robot state
-    sensor_msgs::msg::NavSatFix pose;           // NavSatFix message to store current GPS pose
-    std_msgs::msg::Float32 heading;             // Float32 message to store heading information in degrees
+    geometry_msgs::msg::Twist vel;
+    nav_msgs::msg::Odometry odom;
+    sensor_msgs::msg::NavSatFix pose;
+    std_msgs::msg::Float32 heading;
+    sensor_msgs::msg::Imu imu_msg_;
 
     // Time Variables
-    rclcpp::Time last_vel;                      // Timestamp of the last velocity command
-    rclcpp::Time last_update;                   // Timestamp of the last update
-    rclcpp::Time measure_time;                  // Current measurement time
-    rclcpp::Time simulated_time_;               // Simulated time for the node
+    rclcpp::Time last_vel;
+    rclcpp::Time last_update;
+    rclcpp::Time measure_time;
+    rclcpp::Time simulated_time_;
 
     // State Variables
-    bool is_running;                            // Flag to indicate if the simulator is running
-    double th;                                  // Current orientation angle (theta) in radians
+    bool is_running;
+    double th;
 
     // ROS2 Interfaces
-    rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr vel_sub;       // Subscriber for velocity commands
-    rclcpp::Publisher<sensor_msgs::msg::NavSatFix>::SharedPtr gps_pub;        // Publisher for GPS position data
-    rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr heading_pub;         // Publisher for heading data
-    rclcpp::Publisher<rosgraph_msgs::msg::Clock>::SharedPtr clock_pub_;       // Publisher for simulated clock
-    rclcpp::TimerBase::SharedPtr loop_timer;                                  // Timer for the update loop
+    rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr vel_sub;
+    rclcpp::Publisher<sensor_msgs::msg::NavSatFix>::SharedPtr gps_pub;
+    rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr heading_pub;
+    rclcpp::Publisher<rosgraph_msgs::msg::Clock>::SharedPtr clock_pub_;
+    rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub_;
+    rclcpp::TimerBase::SharedPtr loop_timer;
+
+    geometry_msgs::msg::Twist prev_twist_;
 
 public:
-    // Constructor for the MobileRobotSimulator class
+    // Constructor
     MobileRobotSimulator(const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
         : Node("mobile_simulator", options), is_running(false), th(0.0) {
 
-        // Declare and get parameters with default values
-        this->declare_parameter<double>("publish_rate", 10.0);                // Publishing rate in Hz
-
-        this->declare_parameter<std::string>("velocity_topic", "cmd_vel");    // Default velocity topic
-        this->declare_parameter<std::string>("heading_topic", "heading");     // Default heading topic
-
-        this->declare_parameter<std::string>("position_topic", "fix");        // Default GPS position topic
-        this->declare_parameter<double>("latitude", 0.0);                     // Default latitude
-        this->declare_parameter<double>("longitude", 0.0);                    // Default longitude
-        this->declare_parameter<double>("altitude", 0.0);                     // Default altitude
-        this->declare_parameter<double>("heading", 0.0);                      // Default heading in degrees
+        // Declare and get parameters
+        this->declare_parameter<double>("publish_rate", 10.0);
+        this->declare_parameter<std::string>("velocity_topic", "cmd_vel");
+        this->declare_parameter<std::string>("heading_topic", "heading");
+        this->declare_parameter<std::string>("imu_topic", "imu/data");
+        this->declare_parameter<std::string>("position_topic", "fix");
+        this->declare_parameter<double>("latitude", 0.0);
+        this->declare_parameter<double>("longitude", 0.0);
+        this->declare_parameter<double>("altitude", 0.0);
+        this->declare_parameter<double>("heading", 0.0);
 
         // Retrieve parameter values
         this->get_parameter("publish_rate", publish_rate);
-
         this->get_parameter("velocity_topic", velocity_topic_);
         this->get_parameter("heading_topic", heading_topic_);
-
+        this->get_parameter("imu_topic", imu_topic_);
         this->get_parameter("position_topic", position_topic_);
         this->get_parameter("latitude", latitude_);
         this->get_parameter("longitude", longitude_);
@@ -242,13 +178,13 @@ public:
         this->get_parameter("heading", heading_);
 
         // Convert initial heading from degrees to radians
-        th = heading_ * M_PI / 180.0; // Initialize th with the initial heading in radians
+        th = heading_ * M_PI / 180.0;
 
         // Initialize odometry message
         odom.header.frame_id = "world";
         odom.pose.pose.position.x = 0.0;
         odom.pose.pose.position.y = 0.0;
-        odom.pose.pose.position.z = 0.0; // Start at zero altitude in ENU coordinates
+        odom.pose.pose.position.z = 0.0;
 
         tf2::Quaternion q;
         q.setRPY(0, 0, th);
@@ -262,78 +198,78 @@ public:
         odom.twist.twist.angular.z = 0.0;
 
         // Initialize velocity message
-        vel.linear.x = 0.0;
-        vel.linear.y = 0.0;
-        vel.linear.z = 0.0;
-        vel.angular.x = 0.0;
-        vel.angular.y = 0.0;
-        vel.angular.z = 0.0;
+        vel = odom.twist.twist;
 
-        // Initialize the pose message with the frame ID and initial GPS coordinates
-        pose.header.frame_id = "world";    // Set the coordinate frame to "world"
-        pose.latitude = latitude_;         // Set initial latitude
-        pose.longitude = longitude_;       // Set initial longitude
-        pose.altitude = altitude_;         // Set initial altitude
+        // Initialize the pose message
+        pose.header.frame_id = "world";
+        pose.latitude = latitude_;
+        pose.longitude = longitude_;
+        pose.altitude = altitude_;
 
-        // Initialize the heading message with the initial heading value in degrees
-        heading.data = heading_; // Heading in degrees
+        // Initialize the heading message
+        heading.data = heading_;
 
         // Create subscriber for velocity commands
         vel_sub = this->create_subscription<geometry_msgs::msg::Twist>(
             velocity_topic_, 5,
             std::bind(&MobileRobotSimulator::vel_callback, this, std::placeholders::_1));
 
-        // Create publishers for GPS position and heading
+        // Create publishers
         gps_pub = this->create_publisher<sensor_msgs::msg::NavSatFix>(position_topic_, 10);
         heading_pub = this->create_publisher<std_msgs::msg::Float32>(heading_topic_, 10);
-
-        // Create a publisher for the simulated clock
+        imu_pub_ = this->create_publisher<sensor_msgs::msg::Imu>(imu_topic_, 10);
         clock_pub_ = this->create_publisher<rosgraph_msgs::msg::Clock>("/clock", 10);
 
-        // Initialize simulated_time_ with zero time
+        // Initialize simulated_time_
         simulated_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
+        last_vel = simulated_time_;
+        last_update = simulated_time_;
 
-        last_vel = simulated_time_;    // Initialize last_vel with the simulated time
-        last_update = simulated_time_; // Initialize last_update with the simulated time
+        // Initialize previous twist
+        prev_twist_ = odom.twist.twist;
 
-        // Log an informational message indicating successful initialization
-        RCLCPP_INFO(this->get_logger(), "Initialized mobile robot simulator in namespace '%s'", this->get_namespace());
+        RCLCPP_INFO(this->get_logger(), "Initialized mobile robot simulator with IMU in namespace '%s'", this->get_namespace());
     }
 
-    // Destructor to ensure the simulator stops if it's running
+    // Destructor
     ~MobileRobotSimulator() {
-        if (is_running) stop(); // Call stop() if the simulator is running
+        if (is_running) stop();
     }
 
-    // Function to start the simulator's update loop
+    // Start the simulator
     void start() {
-        // Calculate the duration between updates based on the publish rate
         auto duration = std::chrono::duration<double>(1.0 / publish_rate);
-        // Create a wall timer that calls update_loop at the specified publish rate
         loop_timer = this->create_wall_timer(
             std::chrono::duration_cast<std::chrono::nanoseconds>(duration),
             std::bind(&MobileRobotSimulator::update_loop, this));
-        is_running = true; // Set the running flag to true
-
-        // Log an informational message indicating the simulator has started
+        is_running = true;
         RCLCPP_INFO(this->get_logger(), "Started mobile robot simulator update loop, listening on '%s' topic", velocity_topic_.c_str());
     }
 
-    // Function to stop the simulator's update loop
+    // Stop the simulator
     void stop() {
-        loop_timer->cancel(); // Cancel the timer
-        is_running = false;    // Set the running flag to false
-        // Log an informational message indicating the simulator has stopped
+        loop_timer->cancel();
+        is_running = false;
         RCLCPP_INFO(this->get_logger(), "Stopped mobile robot simulator");
     }
 
 private:
-    // Function called periodically by the timer to update and publish data
+    // Update loop
     void update_loop() {
-        // Increment simulated_time_ by the loop duration
+        // Increment simulated_time_
         simulated_time_ += rclcpp::Duration::from_seconds(1.0 / publish_rate);
 
-        // Update the timestamp in messages
+        // Compute time difference since last update
+        rclcpp::Time current_time = simulated_time_;
+        rclcpp::Duration dt = current_time - last_update;
+        double delta_t = dt.seconds();
+        if (delta_t <= 0.0)
+            delta_t = 1.0 / publish_rate;
+
+        // Update odometry based on current velocities
+        update_odom_from_vel(odom.twist.twist, dt);
+
+        // Update timestamps
         pose.header.stamp = simulated_time_;
         odom.header.stamp = simulated_time_;
 
@@ -346,93 +282,119 @@ private:
         clock_msg.clock = simulated_time_;
         clock_pub_->publish(clock_msg);
 
-        //print lat, lon, alt
-        // RCLCPP_INFO(this->get_logger(), "Lat: %f, Lon: %f, Alt: %f", pose.latitude, pose.longitude, pose.altitude);
+        // Compute linear accelerations
+        geometry_msgs::msg::Vector3 linear_accel;
+        linear_accel.x = (odom.twist.twist.linear.x - prev_twist_.linear.x) / delta_t;
+        linear_accel.y = (odom.twist.twist.linear.y - prev_twist_.linear.y) / delta_t;
+        linear_accel.z = (odom.twist.twist.linear.z - prev_twist_.linear.z) / delta_t;
+
+        // Prepare IMU message
+        imu_msg_.header.stamp = current_time;
+        imu_msg_.header.frame_id = "imu_link";
+
+        // Orientation
+        imu_msg_.orientation = odom.pose.pose.orientation;
+
+        // Angular velocity
+        imu_msg_.angular_velocity = odom.twist.twist.angular;
+
+        // Linear acceleration
+        imu_msg_.linear_acceleration = linear_accel;
+
+        // Optionally, set covariance to zero
+        for (int i = 0; i < 9; ++i) {
+            imu_msg_.orientation_covariance[i] = 0.0;
+            imu_msg_.angular_velocity_covariance[i] = 0.0;
+            imu_msg_.linear_acceleration_covariance[i] = 0.0;
+        }
+
+        // Publish IMU message
+        imu_pub_->publish(imu_msg_);
+
+        // Update previous twist and last update time
+        prev_twist_ = odom.twist.twist;
+        last_update = current_time;
     }
 
-    // Function to update odometry based on incoming velocity commands
+    // Update odometry from velocity
     void update_odom_from_vel(const geometry_msgs::msg::Twist& vel_msg, const rclcpp::Duration& time_diff) {
-        double dt = time_diff.seconds();   // Convert time difference to seconds
+        double dt = time_diff.seconds();
 
-        // Compute changes in position and orientation based on velocity and time
+        // Compute changes in position and orientation
         double delta_x = (vel_msg.linear.x * std::cos(th) - vel_msg.linear.y * std::sin(th)) * dt;
         double delta_y = (vel_msg.linear.x * std::sin(th) + vel_msg.linear.y * std::cos(th)) * dt;
         double delta_th = vel_msg.angular.z * dt;
-        double delta_z = vel_msg.linear.z * dt; // Compute vertical displacement
+        double delta_z = vel_msg.linear.z * dt;
 
-        // Update the odometry pose with the computed deltas
+        // Update position and orientation
         odom.pose.pose.position.x += delta_x;
         odom.pose.pose.position.y += delta_y;
-        odom.pose.pose.position.z += delta_z; // Update altitude based on vertical movement
-        th += delta_th; // Update the orientation angle in radians
+        odom.pose.pose.position.z += delta_z;
+        th += delta_th;
 
-        // Normalize the orientation angle to the range [-pi, pi]
+        // Normalize the orientation angle
         th = std::atan2(std::sin(th), std::cos(th));
 
-        // Create a quaternion from the updated orientation angle
+        // Update orientation in odometry
         tf2::Quaternion q;
-        q.setRPY(0, 0, th); // Roll and pitch are zero; yaw is th
-        odom.pose.pose.orientation = tf2::toMsg(q); // Set the orientation in the odometry message
+        q.setRPY(0, 0, th);
+        odom.pose.pose.orientation = tf2::toMsg(q);
 
-        // Set the velocity in the odometry message
-        odom.twist.twist = vel_msg;
+        // The velocities are already updated in vel_callback
+        // Do not overwrite them here
+        // odom.twist.twist = vel_msg; // Remove this line
 
-        // Convert the updated odometry to GPS coordinates
+        // Convert odometry to GPS coordinates
         convert_odom_to_pose();
 
-        // Update the heading message with the current orientation angle converted to degrees
-        heading.data = th * 180.0 / M_PI; // Convert radians to degrees
+        // Update heading message
+        heading.data = th * 180.0 / M_PI;
     }
 
-    // Function to convert odometry data to GPS pose
+    // Convert odometry to GPS pose
     void convert_odom_to_pose() {
         double lat, lon, alt;
-        // Convert ENU coordinates from odometry to GPS coordinates using the initial latitude and longitude as datum
         std::tie(lat, lon, alt) = loc::enu_to_gps(
-            odom.pose.pose.position.x,    // East coordinate
-            odom.pose.pose.position.y,    // North coordinate
-            odom.pose.pose.position.z,    // Up coordinate (now includes altitude changes)
-            latitude_,                    // Reference latitude
-            longitude_,                   // Reference longitude
-            altitude_                     // Reference altitude
+            odom.pose.pose.position.x,
+            odom.pose.pose.position.y,
+            odom.pose.pose.position.z,
+            latitude_,
+            longitude_,
+            altitude_
         );
-        // Update the pose message with the new latitude, longitude, and altitude
         pose.latitude = lat;
         pose.longitude = lon;
         pose.altitude = alt;
     }
 
-    // Callback function for incoming velocity commands
+    // Velocity callback
     void vel_callback(const geometry_msgs::msg::Twist::SharedPtr msg) {
-        measure_time = simulated_time_; // Set the measurement time to the current simulated time
-        rclcpp::Duration dt = measure_time - last_vel; // Calculate the time difference since the last velocity command
+        measure_time = simulated_time_;
+        rclcpp::Duration dt = measure_time - last_vel;
 
-        // If the time difference is too large, cap it to prevent large jumps
         if (dt > rclcpp::Duration::from_seconds(1.0 / publish_rate))
             dt = rclcpp::Duration::from_seconds(1.0 / publish_rate);
 
-        last_vel = measure_time; // Update the last_vel timestamp
+        last_vel = measure_time;
 
-        // Update odometry based on the received velocity message and time difference
-        update_odom_from_vel(*msg, dt);
+        // Update current velocities
+        odom.twist.twist = *msg;
     }
 };
 
-// Main function to initialize and run the ROS2 node
+// Main function
 int main(int argc, char** argv) {
-    rclcpp::init(argc, argv); // Initialize the ROS2 client library
+    rclcpp::init(argc, argv);
 
-    // Create node options and set the 'use_sim_time' parameter to true
     rclcpp::NodeOptions options;
     options.parameter_overrides(
-        {{"use_sim_time", true}}  // Override the 'use_sim_time' parameter to enable simulated time
+        {{"use_sim_time", true}}
     );
 
-    // Create an instance of the MobileRobotSimulator node with the specified options
     auto simulator = std::make_shared<MobileRobotSimulator>(options);
-    simulator->start(); // Start the simulator's update loop
+    simulator->start();
 
-    rclcpp::spin(simulator); // Spin the node to process callbacks
-    rclcpp::shutdown();      // Shutdown the ROS2 client library
-    return 0;                // Exit the program
+    rclcpp::spin(simulator);
+    rclcpp::shutdown();
+    return 0;
 }

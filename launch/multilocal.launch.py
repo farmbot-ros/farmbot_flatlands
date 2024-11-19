@@ -56,7 +56,8 @@ def launch_setup(context, *args, **kwargs):
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(localization_launch_file),
                 launch_arguments={
-                    'namespace': namespace
+                    'namespace': namespace,
+                    'autodatum': 'datum'
                 }.items()
             )
         ])

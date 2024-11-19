@@ -112,12 +112,13 @@ def launch_setup(context, *args, **kwargs):
 
         namespace = f'robot{i}'
         heading = random.uniform(0, 360)
+        print(f'Robot {i} at {robot_latitude}, {robot_longitude}, {robot_altitude} with heading {heading}')
 
         # Create the MobileRobotSimulator node
         robot_node = Node(
             package='farmbot_flatlands',
-            executable='robot',
-            name='mobile_robot_simulator',
+            executable='simulator',
+            name='simulator',
             namespace=namespace,
             parameters=[
                 {'publish_rate': 10.0},
@@ -126,6 +127,7 @@ def launch_setup(context, *args, **kwargs):
                 {'reference_topic': 'loc/ref/geo'},
                 {'position_topic': 'gps_center'},
                 {'heading_topic': 'heading'},
+                {'imu_topic': 'imu/data'},
                 {'latitude': robot_latitude},
                 {'longitude': robot_longitude},
                 {'altitude': robot_altitude},
