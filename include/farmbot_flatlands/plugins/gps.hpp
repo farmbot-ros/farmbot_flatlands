@@ -98,8 +98,8 @@ namespace sim {
                 bool first_tick_;
 
                 // Heading variables
-                double heading_deg = 0.0;
-                double heading_rad = 0.0;
+                double heading_deg;
+                double heading_rad;
             public:
                 GPSPlugin() = default;
 
@@ -115,10 +115,12 @@ namespace sim {
                     prev_y_(0.0),
                     first_tick_(true)
                 {
-                    RCLCPP_INFO(node_->get_logger(), "GPS Plugin initialized");
+                    RCLCPP_INFO(node_->get_logger(), "GPS Plugin initialized on topic: %s", topic.c_str());
                     // Create publishers
                     gps_pub_ = node_->create_publisher<sensor_msgs::msg::NavSatFix>(topic_ + "/fix", 10);
                     heading_pub_ = node_->create_publisher<std_msgs::msg::Float32>(topic + "/heading", 10);
+                    heading_deg = 0.0;
+                    heading_rad = 0.0;
                 }
 
                 void tick(const rclcpp::Time & current_time, const nav_msgs::msg::Odometry & odom, bool new_data = true) {
