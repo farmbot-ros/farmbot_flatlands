@@ -13,6 +13,7 @@
 #include "farmbot_flatlands/plugins/gps.hpp"
 #include "farmbot_flatlands/plugins/imu.hpp"
 #include "farmbot_flatlands/plugins/gyro.hpp"
+#include "farmbot_flatlands/plugins/compass.hpp"
 
 // TF2 Headers
 #include "tf2/LinearMath/Quaternion.h"
@@ -49,6 +50,7 @@ namespace sim {
             std::string fix_topic_;
             std::string imu_topic_;
             std::string gyro_topic_;
+            std::string compass_topic_;
 
             double latitude_;
             double longitude_;
@@ -67,12 +69,11 @@ namespace sim {
             rclcpp::TimerBase::SharedPtr loop_timer_;
             bool new_message_ = false;
 
-            // GPS Plugin
+            // Plugins
             plugins::GPSPlugin gps_plugin_;
-            // IMU Plugin
             plugins::IMUPlugin imu_plugin_;
-            // Gyro Plugin
             plugins::GyroPlugin gyro_plugin_;
+            plugins::CompassPlugin compass_plugin_;
 
             // Velocity Control Variables
             geometry_msgs::msg::Twist current_twist_;
@@ -96,6 +97,8 @@ namespace sim {
                 this->get_parameter("gnss_topic", fix_topic_);
                 this->declare_parameter<std::string>("gyro_topic", "gyro");
                 this->get_parameter("gyro_topic", gyro_topic_);
+                this->declare_parameter<std::string>("compass_topic", "compass");
+                this->get_parameter("compass_topic", compass_topic_);
                 this->declare_parameter<double>("latitude", 0.0);
                 this->get_parameter("latitude", latitude_);
                 this->declare_parameter<double>("longitude", 0.0);
@@ -141,9 +144,9 @@ namespace sim {
                 target_twist_ = current_twist_; // Initially, target is same as current
 
                 // Initialize maximum accelerations (tunable parameters)
-                this->declare_parameter<double>("max_linear_accel", 0.5);   // m/s²
+                this->declare_parameter<double>("max_linear_accel", 0.7);   // m/s²
                 this->get_parameter("max_linear_accel", max_linear_accel_);
-                this->declare_parameter<double>("max_angular_accel", 0.5);  // rad/s²
+                this->declare_parameter<double>("max_angular_accel", 0.7);  // rad/s²
                 this->get_parameter("max_angular_accel", max_angular_accel_);
 
                 RCLCPP_INFO(this->get_logger(), "SIM initialized.");
@@ -163,6 +166,8 @@ namespace sim {
                 imu_plugin_ = plugins::IMUPlugin(this->shared_from_this(), imu_topic_, odom_);
                 // Create Gyro Plugin
                 gyro_plugin_ = plugins::GyroPlugin(this->shared_from_this(), gyro_topic_, odom_);
+                // Create Compass Plugin
+                compass_plugin_ = plugins::CompassPlugin(this->shared_from_this(), compass_topic_, odom_);
                 // Start the simulator
                 loop_timer_ = this->create_wall_timer(
                     std::chrono::duration<double>(1.0 / publish_rate_),
@@ -284,13 +289,14 @@ namespace sim {
                 auto gps_future = std::async(std::launch::async, [this, current_time, odom_copy, has_new_message]() {
                     gps_plugin_.tick(current_time, odom_copy, has_new_message);
                 });
-
                 auto imu_future = std::async(std::launch::async, [this, current_time, odom_copy, has_new_message]() {
                     imu_plugin_.tick(current_time, odom_copy, has_new_message);
                 });
-
                 auto gyro_future = std::async(std::launch::async, [this, current_time, odom_copy, has_new_message]() {
                     gyro_plugin_.tick(current_time, odom_copy, has_new_message);
+                });
+                auto compass_future = std::async(std::launch::async, [this, current_time, odom_copy, has_new_message]() {
+                    compass_plugin_.tick(current_time, odom_copy, has_new_message);
                 });
 
                 // Publish simulated clock
