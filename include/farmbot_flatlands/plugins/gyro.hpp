@@ -38,9 +38,9 @@ namespace sim {
                 GyroPlugin(rclcpp::Node::SharedPtr node, const std::string & topic_name, const nav_msgs::msg::Odometry & odom)
                     : node_(node), topic_(topic_name)
                 {
-                    RCLCPP_INFO(node_->get_logger(), "Gyro Plugin initialized on topic: %s/gyro", topic_.c_str());
+                    RCLCPP_INFO(node_->get_logger(), "Gyro Plugin initialized on topic: %s", topic_.c_str());
                     // Initialize publisher
-                    gyro_pub_ = node_->create_publisher<geometry_msgs::msg::QuaternionStamped>(topic_ + "/gyro", 10);
+                    gyro_pub_ = node_->create_publisher<geometry_msgs::msg::QuaternionStamped>(topic_, 10);
 
                     // Initialize gyro_msg_
                     gyro_msg_.header.frame_id = "gyro_link";  // Ensure this matches your TF setup
@@ -63,10 +63,10 @@ namespace sim {
                  * @param new_data Flag indicating if new odometry data is available.
                  */
                 void tick(const rclcpp::Time & current_time, const nav_msgs::msg::Odometry & odom, bool new_data = true) {
-                    if (!new_data) {
-                        RCLCPP_WARN(node_->get_logger(), "GyroPlugin tick called without new odometry data.");
-                        return;
-                    }
+                    // if (!new_data) {
+                    //     RCLCPP_WARN(node_->get_logger(), "GyroPlugin tick called without new odometry data.");
+                    //     return;
+                    // }
 
                     // Extract orientation from odometry
                     geometry_msgs::msg::Quaternion orientation = odom.pose.pose.orientation;

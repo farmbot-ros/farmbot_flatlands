@@ -12,6 +12,7 @@
 // Plugins (Header-Only)
 #include "farmbot_flatlands/plugins/gps.hpp"
 #include "farmbot_flatlands/plugins/imu.hpp"
+#include "farmbot_flatlands/plugins/gyro.hpp"
 
 // TF2 Headers
 #include "tf2/LinearMath/Quaternion.h"
@@ -47,6 +48,7 @@ namespace sim {
             std::string vel_topic_;
             std::string fix_topic_;
             std::string imu_topic_;
+            std::string gyro_topic_;
 
             double latitude_;
             double longitude_;
@@ -69,6 +71,8 @@ namespace sim {
             plugins::GPSPlugin gps_plugin_;
             // IMU Plugin
             plugins::IMUPlugin imu_plugin_;
+            // Gyro Plugin
+            plugins::GyroPlugin gyro_plugin_;
 
             // Velocity Control Variables
             geometry_msgs::msg::Twist current_twist_;
@@ -90,6 +94,8 @@ namespace sim {
                 this->get_parameter("imu_topic", imu_topic_);
                 this->declare_parameter<std::string>("gnss_topic", "gnss");
                 this->get_parameter("gnss_topic", fix_topic_);
+                this->declare_parameter<std::string>("gyro_topic", "gyro");
+                this->get_parameter("gyro_topic", gyro_topic_);
                 this->declare_parameter<double>("latitude", 0.0);
                 this->get_parameter("latitude", latitude_);
                 this->declare_parameter<double>("longitude", 0.0);
@@ -155,6 +161,8 @@ namespace sim {
                 gps_plugin_ = plugins::GPSPlugin(this->shared_from_this(), fix_topic_, fix_);
                 // Create IMU Plugin
                 imu_plugin_ = plugins::IMUPlugin(this->shared_from_this(), imu_topic_, odom_);
+                // Create Gyro Plugin
+                gyro_plugin_ = plugins::GyroPlugin(this->shared_from_this(), gyro_topic_, odom_);
                 // Start the simulator
                 loop_timer_ = this->create_wall_timer(
                     std::chrono::duration<double>(1.0 / publish_rate_),
@@ -280,6 +288,11 @@ namespace sim {
                 auto imu_future = std::async(std::launch::async, [this, current_time, odom_copy, has_new_message]() {
                     imu_plugin_.tick(current_time, odom_copy, has_new_message);
                 });
+
+                auto gyro_future = std::async(std::launch::async, [this, current_time, odom_copy, has_new_message]() {
+                    gyro_plugin_.tick(current_time, odom_copy, has_new_message);
+                });
+
                 // Publish simulated clock
                 rosgraph_msgs::msg::Clock clock_msg;
                 clock_msg.clock = simulated_time_;
