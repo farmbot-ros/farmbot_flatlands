@@ -23,8 +23,13 @@
 #include "tf2/LinearMath/Quaternion.h"
 #include <farmbot_interfaces/srv/detail/trigger__struct.hpp>
 #include <farmbot_interfaces/srv/detail/value__struct.hpp>
+#include <rclcpp/timer.hpp>
 #include <tf2/LinearMath/Matrix3x3.h>
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
+
+// ROS Diagnostics
+#include "diagnostic_updater/diagnostic_updater.hpp"
+#include "diagnostic_msgs/msg/diagnostic_status.hpp"
 
 // Standard Libraries
 #include <curl/curl.h>
@@ -81,6 +86,10 @@ namespace sim {
             rclcpp::TimerBase::SharedPtr loop_timer_;
             bool new_message_ = false;
 
+            //Diagnostic Updater
+            diagnostic_updater::Updater updater_;
+            rclcpp::TimerBase::SharedPtr diagnostic_timer_;
+
             // Plugins
             plugins::GPSPlugin gps_plugin_;
             plugins::IMUPlugin imu_plugin_;
@@ -97,7 +106,7 @@ namespace sim {
             // std::mutex odom_mutex_;
 
         public:
-            SIM(const rclcpp::NodeOptions & options = rclcpp::NodeOptions()) : Node("simulator", options) {
+            SIM(const rclcpp::NodeOptions & options = rclcpp::NodeOptions()) : Node("simulator", options), updater_(this){
                 // Declare and get parameters
                 this->declare_parameter<double>("publish_rate", 10.0);
                 this->get_parameter("publish_rate", publish_rate_);
@@ -172,6 +181,12 @@ namespace sim {
                 this->declare_parameter<double>("simulation_speed", 1.0);
                 this->get_parameter("simulation_speed", simulation_speed_);
 
+
+                // Diagnostic Updater
+                updater_.setHardwareID(static_cast<std::string>(this->get_namespace()) + "/sim");
+                updater_.add("System Status", this, &SIM::check_system);
+                diagnostic_timer_ = this->create_wall_timer(1s, std::bind(&SIM::diagnostic_callback, this));
+
                 RCLCPP_INFO(this->get_logger(), "SIM initialized.");
             }
 
@@ -180,6 +195,17 @@ namespace sim {
                     loop_timer_->cancel();
                 }
                 RCLCPP_INFO(this->get_logger(), "Simulator stopped.");
+            }
+
+            void diagnostic_callback(){
+                updater_.force_update();
+            }
+
+            void check_system(diagnostic_updater::DiagnosticStatusWrapper &stat){
+                stat.summary(diagnostic_msgs::msg::DiagnosticStatus::OK, "System running");
+                stat.add("Simulation Speed", simulation_speed_);
+                stat.add("Publish Rate", publish_rate_);
+                stat.add("Paused", paused_);
             }
 
             void start(){

@@ -48,6 +48,8 @@ find_package(farmbot_interfaces REQUIRED)
 find_package(rviz_common REQUIRED)
 find_package(rviz_rendering REQUIRED)
 find_package(pluginlib REQUIRED)
+find_package(diagnostic_msgs REQUIRED)
+find_package(diagnostic_updater REQUIRED)
 
 include_directories(
     include
@@ -77,6 +79,8 @@ set(dependencies_ros
     rviz_common
     rviz_rendering
     pluginlib
+    diagnostic_msgs
+    diagnostic_updater
 )
 
 
