@@ -9,6 +9,10 @@
 #include "std_msgs/msg/float32.hpp"
 #include "rosgraph_msgs/msg/clock.hpp"
 
+// Service Types
+#include "farmbot_interfaces/srv/trigger.hpp"
+#include "farmbot_interfaces/srv/value.hpp"
+
 // Plugins (Header-Only)
 #include "farmbot_flatlands/plugins/gps.hpp"
 #include "farmbot_flatlands/plugins/imu.hpp"
@@ -17,6 +21,8 @@
 
 // TF2 Headers
 #include "tf2/LinearMath/Quaternion.h"
+#include <farmbot_interfaces/srv/detail/trigger__struct.hpp>
+#include <farmbot_interfaces/srv/detail/value__struct.hpp>
 #include <tf2/LinearMath/Matrix3x3.h>
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
 
@@ -36,6 +42,8 @@ using namespace std::chrono_literals;
 namespace sim {
     class SIM : public rclcpp::Node {
         private:
+            double simulation_speed_;
+            bool paused_;
             // Robot state
             sensor_msgs::msg::NavSatFix fix_;
             nav_msgs::msg::Odometry odom_;
@@ -64,6 +72,10 @@ namespace sim {
             // ROS Interfaces
             rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr vel_sub_;
             rclcpp::Publisher<rosgraph_msgs::msg::Clock>::SharedPtr clock_pub_;
+
+            // Pause/Resume Service
+            rclcpp::Service<farmbot_interfaces::srv::Trigger>::SharedPtr pause_service_;
+            rclcpp::Service<farmbot_interfaces::srv::Value>::SharedPtr set_speed_service_;
 
             // Timer
             rclcpp::TimerBase::SharedPtr loop_timer_;
@@ -126,6 +138,14 @@ namespace sim {
                     std::bind(&SIM::vel_callback, this, std::placeholders::_1)
                 );
 
+                // Play / Pause Service
+                pause_service_ = this->create_service<farmbot_interfaces::srv::Trigger>("/sim/pause",
+                    std::bind(&SIM::pause_callback, this, std::placeholders::_1, std::placeholders::_2)
+                );
+                set_speed_service_ = this->create_service<farmbot_interfaces::srv::Value>("/sim/speed",
+                    std::bind(&SIM::speed_callback, this, std::placeholders::_1, std::placeholders::_2)
+                );
+
                 // Publisher for simulated clock
                 clock_pub_ = this->create_publisher<rosgraph_msgs::msg::Clock>("/clock", 10);
 
@@ -148,6 +168,9 @@ namespace sim {
                 this->get_parameter("max_linear_accel", max_linear_accel_);
                 this->declare_parameter<double>("max_angular_accel", 0.7);  // rad/s²
                 this->get_parameter("max_angular_accel", max_angular_accel_);
+
+                this->declare_parameter<double>("simulation_speed", 1.0);
+                this->get_parameter("simulation_speed", simulation_speed_);
 
                 RCLCPP_INFO(this->get_logger(), "SIM initialized.");
             }
@@ -177,13 +200,16 @@ namespace sim {
 
         private:
             void vel_callback(const geometry_msgs::msg::Twist::SharedPtr msg){
+                if (paused_) { return; }
                 target_twist_ = *msg; // Set target velocities based on incoming Twist message
                 new_message_ = true;
             }
 
             void update_loop(){
+                if (paused_) { return; }
                 // Increment simulated time
-                simulated_time_ += rclcpp::Duration::from_seconds(1.0 / publish_rate_);
+                double time_increment = (1.0 / publish_rate_) * simulation_speed_;
+                simulated_time_ += rclcpp::Duration::from_seconds(time_increment);
 
                 // Compute time difference
                 rclcpp::Duration dt = simulated_time_ - last_update_;
@@ -313,6 +339,19 @@ namespace sim {
                 target_twist_ = zero_twist;
             }
 
+            //service callbacks
+            void pause_callback(const std::shared_ptr<farmbot_interfaces::srv::Trigger::Request> request,
+                                std::shared_ptr<farmbot_interfaces::srv::Trigger::Response> response){
+                paused_ = !paused_;
+            }
+
+            void speed_callback(const std::shared_ptr<farmbot_interfaces::srv::Value::Request> request,
+                                std::shared_ptr<farmbot_interfaces::srv::Value::Response> response){
+                double value = request->value.data;
+                if (value > 0.0 || value < 10.0){
+                    simulation_speed_ = value;
+                }
+            }
     };
 } // namespace sim
 
