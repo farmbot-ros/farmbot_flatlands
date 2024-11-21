@@ -88,6 +88,7 @@ namespace sim {
 
             //Diagnostic Updater
             diagnostic_updater::Updater updater_;
+            diagnostic_msgs::msg::DiagnosticStatus status;
             rclcpp::TimerBase::SharedPtr diagnostic_timer_;
 
             // Plugins
@@ -128,6 +129,10 @@ namespace sim {
                 this->get_parameter("altitude", altitude_);
                 this->declare_parameter<double>("heading", 0.0);
                 this->get_parameter("heading", heading_);
+
+                // diagnostic
+                status.level = diagnostic_msgs::msg::DiagnosticStatus::WARN;
+                status.message = "Not initialized";
 
                 // Initialize odometry message
                 odom_.header.frame_id = "world";
@@ -183,9 +188,9 @@ namespace sim {
 
 
                 // Diagnostic Updater
-                updater_.setHardwareID(static_cast<std::string>(this->get_namespace()) + "/sim");
-                updater_.add("System Status", this, &SIM::check_system);
-                diagnostic_timer_ = this->create_wall_timer(1s, std::bind(&SIM::diagnostic_callback, this));
+                // updater_.setHardwareID(static_cast<std::string>(this->get_namespace()) + "/sim");
+                // updater_.add("System Status", this, &SIM::check_system);
+                // diagnostic_timer_ = this->create_wall_timer(1s, std::bind(&SIM::diagnostic_callback, this));
 
                 RCLCPP_INFO(this->get_logger(), "SIM initialized.");
             }
@@ -197,16 +202,16 @@ namespace sim {
                 RCLCPP_INFO(this->get_logger(), "Simulator stopped.");
             }
 
-            void diagnostic_callback(){
-                updater_.force_update();
-            }
+            // void diagnostic_callback(){
+            //     updater_.force_update();
+            // }
 
-            void check_system(diagnostic_updater::DiagnosticStatusWrapper &stat){
-                stat.summary(diagnostic_msgs::msg::DiagnosticStatus::OK, "System running");
-                stat.add("Simulation Speed", simulation_speed_);
-                stat.add("Publish Rate", publish_rate_);
-                stat.add("Paused", paused_);
-            }
+            // void check_system(diagnostic_updater::DiagnosticStatusWrapper &stat){
+            //     stat.summary(status.level, status.message);
+            //     stat.add("Simulation Speed", simulation_speed_);
+            //     stat.add("Publish Rate", publish_rate_);
+            //     stat.add("Paused", paused_);
+            // }
 
             void start(){
                 // Create GPS Plugin
@@ -232,7 +237,13 @@ namespace sim {
             }
 
             void update_loop(){
-                if (paused_) { return; }
+                if (paused_) {
+                    status.level = diagnostic_msgs::msg::DiagnosticStatus::WARN;
+                    status.message = "Paused";
+                    return;
+                }
+                status.level = diagnostic_msgs::msg::DiagnosticStatus::OK;
+                status.message = "Running";
                 // Increment simulated time
                 double time_increment = (1.0 / publish_rate_) * simulation_speed_;
                 simulated_time_ += rclcpp::Duration::from_seconds(time_increment);
