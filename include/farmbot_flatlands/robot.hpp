@@ -31,14 +31,14 @@
 using namespace std::chrono_literals;
 
 namespace sim {
-    // Forward declaration of Environment
-    class Environment;
-
     // Robot class handles odometry and robot state updates
     class Robot {
         private:
             //Pointer to the node
             rclcpp::Node::SharedPtr node_;
+            std::shared_ptr<Environment> environment_;
+            rclcpp::Logger logger_;
+
             // Plugins
             std::shared_ptr<plugins::GPSPlugin> gps_plugin_;
             std::shared_ptr<plugins::IMUPlugin> imu_plugin_;
@@ -52,13 +52,9 @@ namespace sim {
             double max_linear_accel_;   // meters per second squared
             double max_angular_accel_;  // radians per second squared
 
-            // Reference to the environment
-            std::shared_ptr<Environment> environment_;
-            rclcpp::Logger logger_;
-
         public:
             Robot(const rclcpp::Node::SharedPtr& node, std::shared_ptr<Environment> environment, double initial_heading=0.0);
-            void init(sensor_msgs::msg::NavSatFix fix);
+            void init();
             void set_twist(const geometry_msgs::msg::Twist& twist);
             void update(double delta_t, const rclcpp::Time & current_time);
             // Getter for odometry
@@ -96,8 +92,8 @@ namespace sim {
         node->get_parameter("max_angular_accel", max_angular_accel_);
     }
 
-    inline void Robot::init(sensor_msgs::msg::NavSatFix fix) {
-        gps_plugin_ = std::make_shared<plugins::GPSPlugin>(node_, "gnss", fix);
+    inline void Robot::init() {
+        gps_plugin_ = std::make_shared<plugins::GPSPlugin>(node_, "gnss", environment_->get_datum());
         // Create IMU Plugin
         imu_plugin_ = std::make_shared<plugins::IMUPlugin>(node_, "imu", get_odom());
         // Create Gyro Plugin

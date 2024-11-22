@@ -12,6 +12,7 @@
 
 // For the Robot state
 #include "nav_msgs/msg/odometry.hpp"
+#include "sensor_msgs/msg/nav_sat_fix.hpp"
 
 // Other necessary includes
 #include <rclcpp/rclcpp.hpp>
@@ -34,6 +35,12 @@ namespace sim {
             bool contains(const geometry_msgs::msg::Point& point) const override;
             std::string get_type() const override { return "Rectangle"; }
         };
+    // RectangleObstacle implementation
+    inline RectangleObstacle::RectangleObstacle(double xmin, double xmax, double ymin, double ymax)
+        : xmin_(xmin), xmax_(xmax), ymin_(ymin), ymax_(ymax) {}
+    inline bool RectangleObstacle::contains(const geometry_msgs::msg::Point& point) const {
+        return (point.x >= xmin_ && point.x <= xmax_ && point.y >= ymin_ && point.y <= ymax_);
+    }
 
     // Circular obstacle
     class CircularObstacle : public Obstacle {
@@ -44,6 +51,14 @@ namespace sim {
             bool contains(const geometry_msgs::msg::Point& point) const override;
             std::string get_type() const override { return "Circle"; }
         };
+    // CircularObstacle implementation
+    inline CircularObstacle::CircularObstacle(double x_center, double y_center, double radius)
+        : x_center_(x_center), y_center_(y_center), radius_(radius) {}
+    inline bool CircularObstacle::contains(const geometry_msgs::msg::Point& point) const {
+        double dx = point.x - x_center_;
+        double dy = point.y - y_center_;
+        return (dx*dx + dy*dy) <= (radius_*radius_);
+    }
 
     // Zone class (could be similar to obstacles or have additional properties)
     class Zone {
@@ -55,10 +70,20 @@ namespace sim {
             bool contains(const geometry_msgs::msg::Point& point) const;
             std::string get_name() const { return name_; }
         };
+    // Zone implementation
+    inline Zone::Zone(const std::string& name, const geometry_msgs::msg::Polygon& area)
+        : name_(name), area_(area) {}
+    // Simple point-in-polygon test (could be improved)
+    inline bool Zone::contains(const geometry_msgs::msg::Point& point) const {
+        // Implement point-in-polygon algorithm here (e.g., ray casting)
+        return false; // Placeholder
+    }
 
     // The Environment class
     class Environment {
         private:
+            sensor_msgs::msg::NavSatFix datum_;
+            std::vector<double> datum_param_;
             rclcpp::Node::SharedPtr node_;
             std::vector<std::shared_ptr<Obstacle>> obstacles_;
             std::vector<std::shared_ptr<Zone>> zones_;
@@ -73,39 +98,23 @@ namespace sim {
             bool is_collision(const geometry_msgs::msg::Point& point) const;
             // Method to check in which zones a point is
             std::vector<std::string> get_zones(const geometry_msgs::msg::Point& point) const;
+            // Method to set/get the datum
+            void set_datum(const sensor_msgs::msg::NavSatFix& datum) { datum_ = datum; }
+            sensor_msgs::msg::NavSatFix get_datum() const { return datum_; }
         };
-
-        // RectangleObstacle implementation
-        inline RectangleObstacle::RectangleObstacle(double xmin, double xmax, double ymin, double ymax)
-            : xmin_(xmin), xmax_(xmax), ymin_(ymin), ymax_(ymax) {}
-
-        inline bool RectangleObstacle::contains(const geometry_msgs::msg::Point& point) const {
-            return (point.x >= xmin_ && point.x <= xmax_ && point.y >= ymin_ && point.y <= ymax_);
-        }
-
-        // CircularObstacle implementation
-        inline CircularObstacle::CircularObstacle(double x_center, double y_center, double radius)
-            : x_center_(x_center), y_center_(y_center), radius_(radius) {}
-
-        inline bool CircularObstacle::contains(const geometry_msgs::msg::Point& point) const {
-            double dx = point.x - x_center_;
-            double dy = point.y - y_center_;
-            return (dx*dx + dy*dy) <= (radius_*radius_);
-        }
-
-        // Zone implementation
-        inline Zone::Zone(const std::string& name, const geometry_msgs::msg::Polygon& area)
-            : name_(name), area_(area) {}
-
-        // Simple point-in-polygon test (could be improved)
-        inline bool Zone::contains(const geometry_msgs::msg::Point& point) const {
-            // Implement point-in-polygon algorithm here (e.g., ray casting)
-            return false; // Placeholder
-        }
-
         // Environment implementation
         inline Environment::Environment(const rclcpp::Node::SharedPtr& node)
-            : node_(node), logger_(node->get_logger()) {}
+            : node_(node), logger_(node->get_logger()) {
+                node_->declare_parameter<std::vector<double>>("datum", {0.0, 0.0, 0.0});
+                node_->get_parameter("datum", datum_param_);
+
+                datum_.header.frame_id = "gps";
+                datum_.latitude = datum_param_[0];
+                datum_.longitude = datum_param_[1];
+                datum_.altitude = datum_param_[2];
+                datum_.position_covariance_type = sensor_msgs::msg::NavSatFix::COVARIANCE_TYPE_UNKNOWN;
+                // RCLCPP_INFO(logger_, "Datum set to: %.6f, %.6f, %.2f", datum_.latitude, datum_.longitude, datum_.altitude);
+            }
         inline Environment::~Environment() {}
 
         inline void Environment::add_obstacle(const std::shared_ptr<Obstacle>& obstacle) {

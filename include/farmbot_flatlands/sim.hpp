@@ -54,10 +54,6 @@ namespace sim {
 
             // Parameters
             double publish_rate_;
-            std::vector<double> datum_;
-
-            // Fix message for GPS
-            sensor_msgs::msg::NavSatFix fix_;
 
             // Time tracking
             rclcpp::Time last_update_;
@@ -103,8 +99,6 @@ namespace sim {
         // Declare and get parameters
         this->declare_parameter<double>("publish_rate", 10.0);
         this->get_parameter("publish_rate", publish_rate_);
-        this->declare_parameter<std::vector<double>>("datum", {0.0, 0.0, 0.0});
-        this->get_parameter("datum", datum_);
 
         // Diagnostic
         status.level = diagnostic_msgs::msg::DiagnosticStatus::WARN;
@@ -128,13 +122,6 @@ namespace sim {
         this->declare_parameter<double>("simulation_speed", 1.0);
         this->get_parameter("simulation_speed", simulation_speed_);
 
-        // Initialize fix message
-        fix_.header.frame_id = "gps";
-        fix_.latitude = datum_[0];
-        fix_.longitude = datum_[1];
-        fix_.altitude = datum_[2];
-        fix_.position_covariance_type = sensor_msgs::msg::NavSatFix::COVARIANCE_TYPE_UNKNOWN;
-
         RCLCPP_INFO(this->get_logger(), "SIM initialized.");
     }
 
@@ -147,10 +134,11 @@ namespace sim {
         // Initialize Environment
         env_ = std::make_shared<Environment>(this->shared_from_this());
         // Initialize Robot with initial heading (converted to radians)
-        robot_ = std::make_shared<Robot>(this->shared_from_this(), env_ ,0.0);
-        robot_->init(fix_);
+        robot_ = std::make_shared<Robot>(this->shared_from_this(), env_ , 0.0);
         // Start the simulator
         loop_timer_ = this->create_wall_timer(std::chrono::duration<double>(1.0 / publish_rate_), std::bind(&SIM::update_loop, this));
+        // Initialize the robot
+        robot_->init();
     }
 
     inline void SIM::vel_callback(const geometry_msgs::msg::Twist::SharedPtr msg){
