@@ -101,7 +101,7 @@ namespace sim {
                 double heading_rad;
             public:
                 // GPSPlugin() = default;
-                void tick2(const rclcpp::Time &current_time) override { return; }
+                void init(const std::vector<std::any>& args) override { return; }
 
                 GPSPlugin(rclcpp::Node::SharedPtr node, std::string topic, const sensor_msgs::msg::NavSatFix & fix):
                     node_(node),
@@ -123,7 +123,7 @@ namespace sim {
                     heading_rad = 0.0;
                 }
 
-                void tick(const rclcpp::Time & current_time, const nav_msgs::msg::Odometry & odom, bool new_data = true) {
+                void tick(const rclcpp::Time & current_time, const nav_msgs::msg::Odometry & odom) override {
                     odom_ = odom;
                     // Convert ENU coordinates to GPS
                     double lat, lon, alt;

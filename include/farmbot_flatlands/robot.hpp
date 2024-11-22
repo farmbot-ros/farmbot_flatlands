@@ -96,7 +96,7 @@ namespace sim {
         node->get_parameter("max_angular_accel", max_angular_accel_);
     }
 
-    void Robot::init(sensor_msgs::msg::NavSatFix fix) {
+    inline void Robot::init(sensor_msgs::msg::NavSatFix fix) {
         gps_plugin_ = std::make_shared<plugins::GPSPlugin>(node_, "gnss", fix);
         // Create IMU Plugin
         imu_plugin_ = std::make_shared<plugins::IMUPlugin>(node_, "imu", get_odom());
@@ -188,20 +188,19 @@ namespace sim {
             odom_.pose.pose.orientation = tf2::toMsg(current_orientation);
 
             auto odom_copy = get_odom();
-            auto has_new_message = true;
 
             // Dispatch plugin tick calls asynchronously
-            auto gps_future = std::async(std::launch::async, [this, current_time, odom_copy, has_new_message]() {
-                gps_plugin_->tick(current_time, odom_copy, has_new_message);
+            auto gps_future = std::async(std::launch::async, [this, current_time, odom_copy]() {
+                gps_plugin_->tick(current_time, odom_copy);
             });
-            auto imu_future = std::async(std::launch::async, [this, current_time, odom_copy, has_new_message]() {
-                imu_plugin_->tick(current_time, odom_copy, has_new_message);
+            auto imu_future = std::async(std::launch::async, [this, current_time, odom_copy]() {
+                imu_plugin_->tick(current_time, odom_copy);
             });
-            auto gyro_future = std::async(std::launch::async, [this, current_time, odom_copy, has_new_message]() {
-                gyro_plugin_->tick(current_time, odom_copy, has_new_message);
+            auto gyro_future = std::async(std::launch::async, [this, current_time, odom_copy]() {
+                gyro_plugin_->tick(current_time, odom_copy);
             });
-            auto compass_future = std::async(std::launch::async, [this, current_time, odom_copy, has_new_message]() {
-                compass_plugin_->tick(current_time, odom_copy, has_new_message);
+            auto compass_future = std::async(std::launch::async, [this, current_time, odom_copy]() {
+                compass_plugin_->tick(current_time, odom_copy);
             });
         }
     }

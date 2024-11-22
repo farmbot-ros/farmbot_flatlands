@@ -44,9 +44,9 @@ namespace sim {
                     compass_msg_.data = 0.0; // Initial heading
                 }
 
-                void tick2(const rclcpp::Time &current_time) override { return; }
+                void init(const std::vector<std::any>& args) override { return; }
 
-                void tick(const rclcpp::Time & current_time, const nav_msgs::msg::Odometry & odom, bool new_data = true) {
+                void tick(const rclcpp::Time & current_time, const nav_msgs::msg::Odometry & odom) override {
                     // if (!new_data) {
                     //     RCLCPP_WARN(node_->get_logger(), "CompassPlugin tick called without new odometry data.");
                     //     return;
