@@ -7,6 +7,7 @@
 #include "std_msgs/msg/float32.hpp"
 
 #include "farmbot_flatlands/plugins/plugin.hpp"
+#include "farmbot_flatlands/cords.hpp"
 
 #include <rclcpp/logging.hpp>
 #include <rclcpp/time.hpp>
@@ -17,66 +18,6 @@
 
 namespace sim {
     namespace plugins {
-        namespace loc {
-            const double R = 6378137.0;                // Earth's radius in meters (equatorial radius)
-            const double f = 1.0 / 298.257223563;      // Flattening factor of the Earth
-            const double e2 = 2 * f - f * f;           // Square of the Earth's eccentricity
-
-            // Function to convert ENU coordinates to ECEF coordinates relative to a datum
-            inline std::tuple<double, double, double> enu_to_ecef(std::tuple<double, double, double> enu, std::tuple<double, double, double> datum) {
-                double xEast, yNorth, zUp;
-                std::tie(xEast, yNorth, zUp) = enu;
-                double latRef, longRef, altRef;
-                std::tie(latRef, longRef, altRef) = datum;
-                double latRef_rad = latRef * M_PI / 180.0;
-                double longRef_rad = longRef * M_PI / 180.0;
-                double cosLatRef = std::cos(latRef_rad);
-                double sinLatRef = std::sin(latRef_rad);
-                double cosLongRef = std::cos(longRef_rad);
-                double sinLongRef = std::sin(longRef_rad);
-                double NRef = R / std::sqrt(1.0 - e2 * sinLatRef * sinLatRef);
-                double x0 = (NRef + altRef) * cosLatRef * cosLongRef;
-                double y0 = (NRef + altRef) * cosLatRef * sinLongRef;
-                double z0 = (NRef * (1 - e2) + altRef) * sinLatRef;
-                double dx = -sinLongRef * xEast - sinLatRef * cosLongRef * yNorth + cosLatRef * cosLongRef * zUp;
-                double dy = cosLongRef * xEast - sinLatRef * sinLongRef * yNorth + cosLatRef * sinLongRef * zUp;
-                double dz = cosLatRef * yNorth + sinLatRef * zUp;
-                double x = x0 + dx;
-                double y = y0 + dy;
-                double z = z0 + dz;
-                return std::make_tuple(x, y, z);
-            }
-
-            // Function to convert ECEF coordinates to GPS coordinates (latitude, longitude, altitude)
-            inline std::tuple<double, double, double> ecef_to_gps(double x, double y, double z) {
-                const double eps = 1e-12; // Convergence threshold
-                double longitude = std::atan2(y, x) * 180.0 / M_PI;
-                double p = std::sqrt(x * x + y * y);
-                double theta = std::atan2(z * R, p * (1 - f) * R);
-                double sinTheta = std::sin(theta);
-                double cosTheta = std::cos(theta);
-                double latitude = std::atan2(z + e2 * (1 - f) * R * sinTheta * sinTheta * sinTheta,
-                                            p - e2 * R * cosTheta * cosTheta * cosTheta);
-                double N = R / std::sqrt(1.0 - e2 * std::sin(latitude) * std::sin(latitude));
-                double altitude = p / std::cos(latitude) - N;
-                double latOld;
-                do {
-                    latOld = latitude;
-                    N = R / std::sqrt(1.0 - e2 * std::sin(latitude) * std::sin(latitude));
-                    altitude = p / std::cos(latitude) - N;
-                    latitude = std::atan2(z + e2 * N * std::sin(latitude), p);
-                } while (std::abs(latitude - latOld) > eps);
-                return std::make_tuple(latitude * 180.0 / M_PI, longitude, altitude);
-            }
-
-            // Function to convert ENU coordinates to GPS coordinates relative to a datum
-            inline std::tuple<double, double, double> enu_to_gps(double xEast, double yNorth, double zUp, double latRef, double longRef, double altRef) {
-                auto ecef = enu_to_ecef(std::make_tuple(xEast, yNorth, zUp), std::make_tuple(latRef, longRef, altRef));
-                return ecef_to_gps(std::get<0>(ecef), std::get<1>(ecef), std::get<2>(ecef));
-            }
-
-        } // namespace loc
-
         class GPSPlugin : public Plugin {
             private:
                 rclcpp::Node::SharedPtr node_;
