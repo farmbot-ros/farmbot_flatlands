@@ -7,29 +7,28 @@ from launch.actions import DeclareLaunchArgument, ExecuteProcess, OpaqueFunction
 from launch.substitutions import LaunchConfiguration
 from ament_index_python.packages import get_package_share_directory
 
-def generate_mission_goal(robot_id, num_robots=1):
-    """
-    Generate a mission goal with offsets based on the robot's ID.
 
-    Args:
-        robot_id (int): The identifier for the robot (e.g., 0 for robot0).
-
-    Returns:
-        str: A YAML-formatted string representing the mission goal.
-    """
-    # Define the base waypoints
-    length = 20.0
+def generate_mission_goal(robot_id, num_robots=1, length=80.0, num_rows=6):
     base_poses = [
-        {"position": {"x": 0.0, "y": 0.0+float(robot_id), "z": 0.0}},
-        {"position": {"x": length, "y": 0.0+float(robot_id), "z": 0.0}},
-        {"position": {"x": length, "y": num_robots+float(robot_id), "z": 0.0}},
-        {"position": {"x": 0.0, "y": num_robots+float(robot_id), "z": 0.0}},
-        {"position": {"x": 0.0, "y": (num_robots*2)+float(robot_id), "z": 0.0}},
-        {"position": {"x": length, "y": (num_robots*2)+float(robot_id), "z": 0.0}},
-        {"position": {"x": length, "y": (num_robots*3)+float(robot_id), "z": 0.0}},
-        {"position": {"x": 0.0, "y": (num_robots*3)+float(robot_id), "z": 0.0}},
-        {"position": {"x": 0.0, "y": (num_robots*4)+float(robot_id), "z": 0.0}},
-        {"position": {"x": length, "y": (num_robots*4)+float(robot_id), "z": 0.0}},
+        {"position": {"x": 0.0,     "y": (num_robots*0)+float(robot_id),    "z": 0.0}},
+        {"position": {"x": length,  "y": (num_robots*0)+float(robot_id),    "z": 0.0}},
+        {"position": {"x": length,  "y": (num_robots*1)+float(robot_id),    "z": 0.0}},
+        {"position": {"x": 0.0,     "y": (num_robots*1)+float(robot_id),    "z": 0.0}},
+
+        {"position": {"x": 0.0,     "y": (num_robots*2)+float(robot_id),    "z": 0.0}},
+        {"position": {"x": length,  "y": (num_robots*2)+float(robot_id),    "z": 0.0}},
+        {"position": {"x": length,  "y": (num_robots*3)+float(robot_id),    "z": 0.0}},
+        {"position": {"x": 0.0,     "y": (num_robots*3)+float(robot_id),    "z": 0.0}},
+
+        {"position": {"x": 0.0,     "y": (num_robots*4)+float(robot_id),    "z": 0.0}},
+        {"position": {"x": length,  "y": (num_robots*4)+float(robot_id),    "z": 0.0}},
+        {"position": {"x": length,  "y": (num_robots*5)+float(robot_id),    "z": 0.0}},
+        {"position": {"x": 0.0,     "y": (num_robots*5)+float(robot_id),    "z": 0.0}},
+
+        {"position": {"x": 0.0,     "y": (num_robots*6)+float(robot_id),    "z": 0.0}},
+        {"position": {"x": length,  "y": (num_robots*6)+float(robot_id),    "z": 0.0}},
+        {"position": {"x": length,  "y": (num_robots*7)+float(robot_id),    "z": 0.0}},
+        {"position": {"x": 0.0,     "y": (num_robots*7)+float(robot_id),    "z": 0.0}},
     ]
 
     # Apply offsets to each pose
