@@ -187,14 +187,11 @@ namespace sim {
         odom.pose.pose.position.x = dist(gen)*1.0;
         odom.pose.pose.position.y = dist(gen)*1.0;
         odom.pose.pose.position.z = 0.0;
-        odom.pose.pose.orientation.x = 0.0;
-        odom.pose.pose.orientation.y = 0.0;
-        odom.pose.pose.orientation.z = 0.0;
-        odom.pose.pose.orientation.w = 1.0;
+        // random orientation
+        std::uniform_real_distribution<double> dist2(-M_PI, M_PI);
+        odom.pose.pose.orientation = tf2::toMsg(tf2::Quaternion(tf2::Vector3(0, 0, 1), dist2(gen)));
         return odom;
     }
-
-
 
     inline void SIM::pause_callback(const std::shared_ptr<Trigger::Request> request, std::shared_ptr<Trigger::Response> response){
         paused_ = !paused_;
