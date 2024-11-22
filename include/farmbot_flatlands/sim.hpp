@@ -29,6 +29,8 @@
 #include "diagnostic_msgs/msg/diagnostic_status.hpp"
 
 // Standard Libraries
+#include <iostream>
+#include <random>
 #include <curl/curl.h>
 #include <ios>
 #include <memory>
@@ -80,6 +82,9 @@ namespace sim {
             // Environment instance
             std::shared_ptr<Environment> env_;
 
+            // Seed for random number generator
+            std::random_device rd_;
+
         public:
             SIM(const rclcpp::NodeOptions & options = rclcpp::NodeOptions());
             ~SIM();
@@ -88,6 +93,7 @@ namespace sim {
         private:
             void vel_callback(const geometry_msgs::msg::Twist::SharedPtr msg);
             void update_loop();
+            nav_msgs::msg::Odometry random_odom(int min, int max);
             // Service callbacks
             void pause_callback(const std::shared_ptr<Trigger::Request> request, std::shared_ptr<Trigger::Response> response);
             void speed_callback(const std::shared_ptr<Value::Request> request, std::shared_ptr<Value::Response> response);
@@ -138,7 +144,7 @@ namespace sim {
         // Start the simulator
         loop_timer_ = this->create_wall_timer(std::chrono::duration<double>(1.0 / publish_rate_), std::bind(&SIM::update_loop, this));
         // Initialize the robot
-        robot_->init();
+        robot_->init(random_odom(-100, 100));
     }
 
     inline void SIM::vel_callback(const geometry_msgs::msg::Twist::SharedPtr msg){
@@ -173,6 +179,21 @@ namespace sim {
         // Update last_update_
         last_update_ = simulated_time_;
     }
+
+    nav_msgs::msg::Odometry SIM::random_odom(int min=100, int max=200){
+        std::mt19937 gen(rd_());
+        std::uniform_int_distribution<int> dist(min, max);
+        nav_msgs::msg::Odometry odom;
+        odom.pose.pose.position.x = dist(gen)*1.0;
+        odom.pose.pose.position.y = dist(gen)*1.0;
+        odom.pose.pose.position.z = 0.0;
+        odom.pose.pose.orientation.x = 0.0;
+        odom.pose.pose.orientation.y = 0.0;
+        odom.pose.pose.orientation.z = 0.0;
+        odom.pose.pose.orientation.w = 1.0;
+        return odom;
+    }
+
 
 
     inline void SIM::pause_callback(const std::shared_ptr<Trigger::Request> request, std::shared_ptr<Trigger::Response> response){

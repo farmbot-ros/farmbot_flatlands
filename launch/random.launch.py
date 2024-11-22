@@ -98,21 +98,8 @@ def launch_setup(context, *args, **kwargs):
 
     for i in range(num_robots):
         # Generate random offsets within max_distance
-        distance = random.uniform(min_distance, max_distance)
-        angle = random.uniform(0, 2 * math.pi)
-
-        # Approximate conversion from meters to degrees
-        delta_latitude = (distance * math.cos(angle)) / 111000  # Degrees latitude per meter
-        delta_longitude = (distance * math.sin(angle)) / (111000 * math.cos(math.radians(base_latitude)))  # Degrees longitude per meter
-
-        robot_latitude = base_latitude + delta_latitude
-        robot_longitude = base_longitude + delta_longitude
-        # robot_altitude = base_altitude+random.uniform(0.5,1.5)
-        robot_altitude = base_altitude
-
         namespace = f'robot{i}'
         heading = random.uniform(0, 360)
-        print(f'Robot {i} at {robot_latitude}, {robot_longitude}, {robot_altitude} with heading {heading}')
 
         # Create the MobileRobotSimulator node
         robot_node = Node(
@@ -122,7 +109,7 @@ def launch_setup(context, *args, **kwargs):
             namespace=namespace,
             parameters=[{
                 'publish_rate': 10.0,
-                'datum': [robot_latitude, robot_longitude, robot_altitude],
+                'datum': [base_latitude, base_longitude, base_altitude],
                 'max_linear_accel': 0.7,
                 'max_angular_accel': 0.7,
             }],

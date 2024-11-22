@@ -54,7 +54,7 @@ namespace sim {
 
         public:
             Robot(const rclcpp::Node::SharedPtr& node, std::shared_ptr<Environment> environment, double initial_heading=0.0);
-            void init();
+            void init(nav_msgs::msg::Odometry odom);
             void set_twist(const geometry_msgs::msg::Twist& twist);
             void update(double delta_t, const rclcpp::Time & current_time);
             // Getter for odometry
@@ -92,7 +92,10 @@ namespace sim {
         node->get_parameter("max_angular_accel", max_angular_accel_);
     }
 
-    inline void Robot::init() {
+    inline void Robot::init(nav_msgs::msg::Odometry odom) {
+        // Set initial odometry
+        odom_ = odom;
+        // Create GPS Plugin
         gps_plugin_ = std::make_shared<plugins::GPSPlugin>(node_, "gnss", environment_->get_datum());
         // Create IMU Plugin
         imu_plugin_ = std::make_shared<plugins::IMUPlugin>(node_, "imu", get_odom());
