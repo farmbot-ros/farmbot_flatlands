@@ -45,28 +45,26 @@ def generate_launch_description():
 def launch_setup(context, datum, *args, **kwargs):
     # Retrieve the launch configuration variables
     num_robots = int(LaunchConfiguration('num_robots').perform(context))
-
     actions = []
+    # Create the MobileRobotSimulator node
+    robot_node = Node(
+        package='farmbot_flatlands',
+        executable='simulator',
+        name='simulator',
+        # namespace=namespace,
+        parameters=[{
+            'publish_rate': 10.0,
+            'datum': datum,  # Use the passed datum
+            'max_linear_accel': 0.7,
+            'max_angular_accel': 0.7,
+            'num_robots': num_robots,
+        }],
+        output='screen'
+    )
+    actions.append(robot_node)
 
     for i in range(num_robots):
-        # Generate random offsets within max_distance
         namespace = f'robot{i}'
-        heading = random.uniform(0, 360)
-
-        # Create the MobileRobotSimulator node
-        robot_node = Node(
-            package='farmbot_flatlands',
-            executable='simulator',
-            name='simulator',
-            namespace=namespace,
-            parameters=[{
-                'publish_rate': 10.0,
-                'datum': datum,  # Use the passed datum
-                'max_linear_accel': 0.7,
-                'max_angular_accel': 0.7,
-            }],
-            output='screen'
-        )
 
         # Create the visualization node
         visualize_node = Node(
@@ -84,7 +82,6 @@ def launch_setup(context, datum, *args, **kwargs):
             output='screen'
         )
 
-        actions.append(robot_node)
         actions.append(visualize_node)
 
     return actions

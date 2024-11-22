@@ -51,10 +51,9 @@ namespace sim {
     // SIM class manages simulation time and uses Robot class for robot state
     class SIM : public rclcpp::Node {
         private:
+            // Parameters
             double simulation_speed_;
             bool paused_;
-
-            // Parameters
             double publish_rate_;
 
             // Time tracking
@@ -62,26 +61,22 @@ namespace sim {
             rclcpp::Time simulated_time_;
 
             // ROS Interfaces
-            rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr vel_sub_;
             rclcpp::Publisher<rosgraph_msgs::msg::Clock>::SharedPtr clock_pub_;
-
             // Pause/Resume Service
             rclcpp::Service<farmbot_interfaces::srv::Trigger>::SharedPtr pause_service_;
             rclcpp::Service<farmbot_interfaces::srv::Value>::SharedPtr set_speed_service_;
-
             // Timer
             rclcpp::TimerBase::SharedPtr loop_timer_;
-
             // Diagnostic Updater
             diagnostic_updater::Updater updater_;
             diagnostic_msgs::msg::DiagnosticStatus status;
-
-            // Robot instance
-            std::shared_ptr<Robot> robot_;
+            // Vector of robots
+            int num_robots_;
+            std::vector<std::shared_ptr<Robot>> robots_;
+            std::vector<rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr> vel_subs_;
 
             // Environment instance
             std::shared_ptr<Environment> env_;
-
             // Seed for random number generator
             std::random_device rd_;
 
@@ -91,7 +86,6 @@ namespace sim {
             void start();
 
         private:
-            void vel_callback(const geometry_msgs::msg::Twist::SharedPtr msg);
             void update_loop();
             nav_msgs::msg::Odometry random_odom(int min, int max);
             // Service callbacks
@@ -106,6 +100,12 @@ namespace sim {
         this->declare_parameter<double>("publish_rate", 10.0);
         this->get_parameter("publish_rate", publish_rate_);
 
+        this->declare_parameter<double>("max_linear_accel", 0.7);   // m/s²
+        this->declare_parameter<double>("max_angular_accel", 0.7);  // rad/s²
+
+        this->declare_parameter<int>("num_robots", 1);
+        this->get_parameter("num_robots", num_robots_);
+
         // Diagnostic
         status.level = diagnostic_msgs::msg::DiagnosticStatus::WARN;
         status.message = "Not initialized";
@@ -113,9 +113,6 @@ namespace sim {
         // Initialize simulated time
         simulated_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
         last_update_ = simulated_time_;
-
-        // Subscriber for velocity commands
-        vel_sub_ = this->create_subscription<geometry_msgs::msg::Twist>("cmd_vel", 10, std::bind(&SIM::vel_callback, this, _1));
 
         // Play / Pause Service
         pause_service_ = this->create_service<Trigger>("/sim/pause", std::bind(&SIM::pause_callback, this, _1, _2));
@@ -139,17 +136,18 @@ namespace sim {
     inline void SIM::start(){
         // Initialize Environment
         env_ = std::make_shared<Environment>(this->shared_from_this());
-        // Initialize Robot with initial heading (converted to radians)
-        robot_ = std::make_shared<Robot>(this->shared_from_this(), env_ , 0.0);
+        // Initialize Robots
+        for (int i = 0; i < num_robots_; i++){
+            std::string robot_name = "robot" + std::to_string(i);
+            robots_.push_back(std::make_shared<Robot>(this->shared_from_this(), env_));
+            robots_[i]->init(robot_name, random_odom(-100, 100));
+            vel_subs_.push_back(this->create_subscription<geometry_msgs::msg::Twist>(
+                robot_name+"/cmd_vel", 10,
+                [this, i](geometry_msgs::msg::Twist::SharedPtr msg) { robots_[i]->set_twist(*msg); }));
+        }
+
         // Start the simulator
         loop_timer_ = this->create_wall_timer(std::chrono::duration<double>(1.0 / publish_rate_), std::bind(&SIM::update_loop, this));
-        // Initialize the robot
-        robot_->init(random_odom(-100, 100));
-    }
-
-    inline void SIM::vel_callback(const geometry_msgs::msg::Twist::SharedPtr msg){
-        if (paused_) { return; }
-        robot_->set_twist(*msg);
     }
 
     inline void SIM::update_loop(){
@@ -169,7 +167,9 @@ namespace sim {
         double delta_t = time_increment;
 
         // Update robot state
-        robot_->update(delta_t, simulated_time_);
+        for (int i = 0; i < num_robots_; i++){
+            robots_[i]->update(delta_t, simulated_time_);
+        }
 
         // Publish /clock message
         rosgraph_msgs::msg::Clock clock_msg;
@@ -180,7 +180,7 @@ namespace sim {
         last_update_ = simulated_time_;
     }
 
-    nav_msgs::msg::Odometry SIM::random_odom(int min=100, int max=200){
+    inline nav_msgs::msg::Odometry SIM::random_odom(int min=100, int max=200){
         std::mt19937 gen(rd_());
         std::uniform_int_distribution<int> dist(min, max);
         nav_msgs::msg::Odometry odom;

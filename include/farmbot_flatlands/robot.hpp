@@ -39,6 +39,8 @@ namespace sim {
             std::shared_ptr<Environment> environment_;
             rclcpp::Logger logger_;
 
+            std::string name_;
+
             // Plugins
             std::shared_ptr<plugins::GPSPlugin> gps_plugin_;
             std::shared_ptr<plugins::IMUPlugin> imu_plugin_;
@@ -53,8 +55,8 @@ namespace sim {
             double max_angular_accel_;  // radians per second squared
 
         public:
-            Robot(const rclcpp::Node::SharedPtr& node, std::shared_ptr<Environment> environment, double initial_heading=0.0);
-            void init(nav_msgs::msg::Odometry odom);
+            Robot(const rclcpp::Node::SharedPtr& node, std::shared_ptr<Environment> environment);
+            void init(std::string name, nav_msgs::msg::Odometry odom);
             void set_twist(const geometry_msgs::msg::Twist& twist);
             void update(double delta_t, const rclcpp::Time & current_time);
             // Getter for odometry
@@ -66,8 +68,7 @@ namespace sim {
     // Implementation of Robot class methods
     inline Robot::Robot(
         const rclcpp::Node::SharedPtr& node,
-        std::shared_ptr<Environment> environment,
-        double initial_heading)
+        std::shared_ptr<Environment> environment)
         : node_(node),
             environment_(environment),
             logger_(node->get_logger())
@@ -76,33 +77,27 @@ namespace sim {
         odom_.header.frame_id = "world";
         odom_.child_frame_id = "base_link";
 
-        // Set initial orientation based on heading
-        tf2::Quaternion quat;
-        quat.setRPY(0, 0, initial_heading);
-        odom_.pose.pose.orientation = tf2::toMsg(quat);
-
         // Initialize current and target velocities to zero
         current_twist_ = geometry_msgs::msg::Twist();
         target_twist_ = geometry_msgs::msg::Twist();
 
         // Get parameters for maximum accelerations
-        node->declare_parameter<double>("max_linear_accel", 0.7);   // m/s²
         node->get_parameter("max_linear_accel", max_linear_accel_);
-        node->declare_parameter<double>("max_angular_accel", 0.7);  // rad/s²
         node->get_parameter("max_angular_accel", max_angular_accel_);
     }
 
-    inline void Robot::init(nav_msgs::msg::Odometry odom) {
+    inline void Robot::init(std::string name, nav_msgs::msg::Odometry odom) {
+        name_ = name;
         // Set initial odometry
         odom_ = odom;
         // Create GPS Plugin
-        gps_plugin_ = std::make_shared<plugins::GPSPlugin>(node_, "gnss", environment_->get_datum());
+        gps_plugin_ = std::make_shared<plugins::GPSPlugin>(node_, name_ + "/gnss", environment_->get_datum());
         // Create IMU Plugin
-        imu_plugin_ = std::make_shared<plugins::IMUPlugin>(node_, "imu", get_odom());
+        imu_plugin_ = std::make_shared<plugins::IMUPlugin>(node_, name_ + "/imu", get_odom());
         // Create Gyro Plugin
-        gyro_plugin_ = std::make_shared<plugins::GyroPlugin>(node_, "gyro", get_odom());
+        gyro_plugin_ = std::make_shared<plugins::GyroPlugin>(node_, name_ + "/gyro", get_odom());
         // Create Compass Plugin
-        compass_plugin_ = std::make_shared<plugins::CompassPlugin>(node_, "compass", get_odom());
+        compass_plugin_ = std::make_shared<plugins::CompassPlugin>(node_, name_ + "/compass", get_odom());
     }
 
     inline void Robot::set_twist(const geometry_msgs::msg::Twist& twist) {
