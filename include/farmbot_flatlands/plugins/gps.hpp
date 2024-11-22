@@ -6,7 +6,10 @@
 #include "nav_msgs/msg/odometry.hpp"
 #include "std_msgs/msg/float32.hpp"
 
+#include "farmbot_flatlands/plugins/plugin.hpp"
+
 #include <rclcpp/logging.hpp>
+#include <rclcpp/time.hpp>
 #include <sensor_msgs/msg/detail/nav_sat_fix__struct.hpp>
 #include <string>
 #include <tuple>
@@ -74,7 +77,7 @@ namespace sim {
 
         } // namespace loc
 
-        class GPSPlugin {
+        class GPSPlugin : public Plugin {
             private:
                 rclcpp::Node::SharedPtr node_;
                 std::string topic_;
@@ -82,26 +85,23 @@ namespace sim {
                 nav_msgs::msg::Odometry odom_;
                 rclcpp::Publisher<sensor_msgs::msg::NavSatFix>::SharedPtr gps_pub_;
                 rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr heading_pub_;
-
                 // Reference coordinates for ENU
                 double lat_ref_;
                 double lon_ref_;
                 double alt_ref_;
-
                 // Last time and fix
                 rclcpp::Time last_time_;
                 sensor_msgs::msg::NavSatFix last_fix_;
-
                 // Previous position for heading calculation
                 double prev_x_;
                 double prev_y_;
                 bool first_tick_;
-
                 // Heading variables
                 double heading_deg;
                 double heading_rad;
             public:
-                GPSPlugin() = default;
+                // GPSPlugin() = default;
+                void tick2(const rclcpp::Time &current_time) override { return; }
 
                 GPSPlugin(rclcpp::Node::SharedPtr node, std::string topic, const sensor_msgs::msg::NavSatFix & fix):
                     node_(node),

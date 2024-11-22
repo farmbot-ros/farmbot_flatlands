@@ -10,6 +10,8 @@
 #include <tf2/LinearMath/Quaternion.h>
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
 
+#include "farmbot_flatlands/plugins/plugin.hpp"
+
 double toRadians(double degrees) {
     auto rads = std::fmod(degrees * M_PI / 180.0, 360.0);
     return rads;
@@ -22,7 +24,7 @@ double toDegrees(double radians) {
 
 namespace sim {
     namespace plugins {
-        class CompassPlugin {
+        class CompassPlugin : Plugin {
             private:
                 rclcpp::Node::SharedPtr node_;  // ROS 2 node handle
                 std::string topic_;              // Topic name for compass data
@@ -42,7 +44,8 @@ namespace sim {
                     compass_msg_.data = 0.0; // Initial heading
                 }
 
-                ~CompassPlugin() = default;
+                void tick2(const rclcpp::Time &current_time) override { return; }
+
                 void tick(const rclcpp::Time & current_time, const nav_msgs::msg::Odometry & odom, bool new_data = true) {
                     // if (!new_data) {
                     //     RCLCPP_WARN(node_->get_logger(), "CompassPlugin tick called without new odometry data.");

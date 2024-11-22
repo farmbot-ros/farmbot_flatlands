@@ -7,9 +7,11 @@
 #include <string>
 #include <memory>
 
+#include "farmbot_flatlands/plugins/plugin.hpp"
+
 namespace sim {
     namespace plugins {
-        class GyroPlugin {
+        class GyroPlugin :Plugin {
             private:
                 rclcpp::Node::SharedPtr node_;  // ROS 2 node handle
                 std::string topic_;              // Base topic name for gyroscope data
@@ -31,7 +33,8 @@ namespace sim {
                     gyro_msg_.quaternion.w = 1.0;
                 }
 
-                ~GyroPlugin() = default;
+                void tick2(const rclcpp::Time &current_time) override { return; }
+
                 void tick(const rclcpp::Time & current_time, const nav_msgs::msg::Odometry & odom, bool new_data = true) {
                     // if (!new_data) {
                     //     RCLCPP_WARN(node_->get_logger(), "GyroPlugin tick called without new odometry data.");
@@ -48,6 +51,7 @@ namespace sim {
                     // RCLCPP_DEBUG(node_->get_logger(), "Gyro - Orientation: [%.2f, %.2f, %.2f, %.2f]",
                     //              orientation.x, orientation.y, orientation.z, orientation.w);
                 }
+
         };
     } // namespace plugins
 } // namespace sim

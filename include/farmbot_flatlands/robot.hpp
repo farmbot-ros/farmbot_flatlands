@@ -6,6 +6,7 @@
 // Message Types
 #include "geometry_msgs/msg/twist.hpp"
 #include "nav_msgs/msg/odometry.hpp"
+#include "sensor_msgs/msg/nav_sat_fix.hpp"
 
 // TF2 Headers
 #include "tf2/LinearMath/Quaternion.h"
@@ -13,12 +14,19 @@
 
 // Standard Libraries
 #include <memory>
+#include <sensor_msgs/msg/detail/nav_sat_fix__struct.hpp>
 #include <string>
 #include <cmath>
 #include <tuple>
 #include <algorithm> // For std::clamp
 
 #include "farmbot_flatlands/environment.hpp"
+#include "farmbot_flatlands/plugins/plugin.hpp"
+
+#include "farmbot_flatlands/plugins/gps.hpp"
+#include "farmbot_flatlands/plugins/imu.hpp"
+#include "farmbot_flatlands/plugins/gyro.hpp"
+#include "farmbot_flatlands/plugins/compass.hpp"
 
 using namespace std::chrono_literals;
 
@@ -31,6 +39,11 @@ namespace sim {
         private:
             //Pointer to the node
             rclcpp::Node::SharedPtr node_;
+            // Plugins
+            std::shared_ptr<plugins::GPSPlugin> gps_plugin_;
+            std::shared_ptr<plugins::IMUPlugin> imu_plugin_;
+            std::shared_ptr<plugins::GyroPlugin> gyro_plugin_;
+            std::shared_ptr<plugins::CompassPlugin> compass_plugin_;
             // Odometry data
             nav_msgs::msg::Odometry odom_;
             // Velocity Control Variables
@@ -45,8 +58,9 @@ namespace sim {
 
         public:
             Robot(const rclcpp::Node::SharedPtr& node, std::shared_ptr<Environment> environment, double initial_heading=0.0);
+            void init(sensor_msgs::msg::NavSatFix fix);
             void set_twist(const geometry_msgs::msg::Twist& twist);
-            void update(double delta_t);
+            void update(double delta_t, const rclcpp::Time & current_time);
             // Getter for odometry
             nav_msgs::msg::Odometry get_odom() const;
             // Getter for robot's position (x, y, z)
@@ -54,7 +68,10 @@ namespace sim {
     };
 
     // Implementation of Robot class methods
-    inline Robot::Robot(const rclcpp::Node::SharedPtr& node, std::shared_ptr<Environment> environment, double initial_heading)
+    inline Robot::Robot(
+        const rclcpp::Node::SharedPtr& node,
+        std::shared_ptr<Environment> environment,
+        double initial_heading)
         : node_(node),
             environment_(environment),
             logger_(node->get_logger())
@@ -79,11 +96,21 @@ namespace sim {
         node->get_parameter("max_angular_accel", max_angular_accel_);
     }
 
+    void Robot::init(sensor_msgs::msg::NavSatFix fix) {
+        gps_plugin_ = std::make_shared<plugins::GPSPlugin>(node_, "gnss", fix);
+        // Create IMU Plugin
+        imu_plugin_ = std::make_shared<plugins::IMUPlugin>(node_, "imu", get_odom());
+        // Create Gyro Plugin
+        gyro_plugin_ = std::make_shared<plugins::GyroPlugin>(node_, "gyro", get_odom());
+        // Create Compass Plugin
+        compass_plugin_ = std::make_shared<plugins::CompassPlugin>(node_, "compass", get_odom());
+    }
+
     inline void Robot::set_twist(const geometry_msgs::msg::Twist& twist) {
         target_twist_ = twist;
     }
 
-    inline void Robot::update(double delta_t) {
+    inline void Robot::update(double delta_t, const rclcpp::Time & current_time) {
         // Calculate required acceleration
         auto calc_accel = [](double target, double current, double max_accel, double dt) {
             double accel = (target - current) / dt;
@@ -159,6 +186,23 @@ namespace sim {
             current_orientation.normalize();
 
             odom_.pose.pose.orientation = tf2::toMsg(current_orientation);
+
+            auto odom_copy = get_odom();
+            auto has_new_message = true;
+
+            // Dispatch plugin tick calls asynchronously
+            auto gps_future = std::async(std::launch::async, [this, current_time, odom_copy, has_new_message]() {
+                gps_plugin_->tick(current_time, odom_copy, has_new_message);
+            });
+            auto imu_future = std::async(std::launch::async, [this, current_time, odom_copy, has_new_message]() {
+                imu_plugin_->tick(current_time, odom_copy, has_new_message);
+            });
+            auto gyro_future = std::async(std::launch::async, [this, current_time, odom_copy, has_new_message]() {
+                gyro_plugin_->tick(current_time, odom_copy, has_new_message);
+            });
+            auto compass_future = std::async(std::launch::async, [this, current_time, odom_copy, has_new_message]() {
+                compass_plugin_->tick(current_time, odom_copy, has_new_message);
+            });
         }
     }
 

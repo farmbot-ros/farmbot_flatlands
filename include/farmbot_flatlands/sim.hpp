@@ -13,12 +13,6 @@
 #include "farmbot_interfaces/srv/trigger.hpp"
 #include "farmbot_interfaces/srv/value.hpp"
 
-// Plugins (Header-Only)
-#include "farmbot_flatlands/plugins/gps.hpp"
-#include "farmbot_flatlands/plugins/imu.hpp"
-#include "farmbot_flatlands/plugins/gyro.hpp"
-#include "farmbot_flatlands/plugins/compass.hpp"
-
 #include "farmbot_flatlands/robot.hpp"
 #include "farmbot_flatlands/environment.hpp"
 
@@ -79,17 +73,10 @@ namespace sim {
 
             // Timer
             rclcpp::TimerBase::SharedPtr loop_timer_;
-            bool new_message_ = false;
 
             // Diagnostic Updater
             diagnostic_updater::Updater updater_;
             diagnostic_msgs::msg::DiagnosticStatus status;
-
-            // Plugins
-            std::shared_ptr<plugins::GPSPlugin> gps_plugin_;
-            std::shared_ptr<plugins::IMUPlugin> imu_plugin_;
-            std::shared_ptr<plugins::GyroPlugin> gyro_plugin_;
-            std::shared_ptr<plugins::CompassPlugin> compass_plugin_;
 
             // Robot instance
             std::shared_ptr<Robot> robot_;
@@ -161,14 +148,7 @@ namespace sim {
         env_ = std::make_shared<Environment>(this->shared_from_this());
         // Initialize Robot with initial heading (converted to radians)
         robot_ = std::make_shared<Robot>(this->shared_from_this(), env_ ,0.0);
-        // Create GPS Plugin
-        gps_plugin_ = std::make_shared<plugins::GPSPlugin>(this->shared_from_this(), "gnss", fix_);
-        // Create IMU Plugin
-        imu_plugin_ = std::make_shared<plugins::IMUPlugin>(this->shared_from_this(), "imu", robot_->get_odom());
-        // Create Gyro Plugin
-        gyro_plugin_ = std::make_shared<plugins::GyroPlugin>(this->shared_from_this(), "gyro", robot_->get_odom());
-        // Create Compass Plugin
-        compass_plugin_ = std::make_shared<plugins::CompassPlugin>(this->shared_from_this(), "compass", robot_->get_odom());
+        robot_->init(fix_);
         // Start the simulator
         loop_timer_ = this->create_wall_timer(std::chrono::duration<double>(1.0 / publish_rate_), std::bind(&SIM::update_loop, this));
     }
@@ -176,7 +156,6 @@ namespace sim {
     inline void SIM::vel_callback(const geometry_msgs::msg::Twist::SharedPtr msg){
         if (paused_) { return; }
         robot_->set_twist(*msg);
-        new_message_ = true;
     }
 
     inline void SIM::update_loop(){
@@ -196,37 +175,9 @@ namespace sim {
         double delta_t = time_increment;
 
         // Update robot state
-        robot_->update(delta_t);
+        robot_->update(delta_t, simulated_time_);
 
-        // Get odometry from robot
-        nav_msgs::msg::Odometry odom_copy = robot_->get_odom();
-
-        // Update timestamps in odometry
-        odom_copy.header.stamp = simulated_time_;
-        odom_copy.child_frame_id = "base_link";
-
-        // Capture current_time and new_message_ for the plugins
-        rclcpp::Time current_time = simulated_time_;
-        bool has_new_message = new_message_;
-
-        // Reset new_message_ flag
-        new_message_ = false;
-
-        // Dispatch plugin tick calls asynchronously
-        auto gps_future = std::async(std::launch::async, [this, current_time, odom_copy, has_new_message]() {
-            gps_plugin_->tick(current_time, odom_copy, has_new_message);
-        });
-        auto imu_future = std::async(std::launch::async, [this, current_time, odom_copy, has_new_message]() {
-            imu_plugin_->tick(current_time, odom_copy, has_new_message);
-        });
-        auto gyro_future = std::async(std::launch::async, [this, current_time, odom_copy, has_new_message]() {
-            gyro_plugin_->tick(current_time, odom_copy, has_new_message);
-        });
-        auto compass_future = std::async(std::launch::async, [this, current_time, odom_copy, has_new_message]() {
-            compass_plugin_->tick(current_time, odom_copy, has_new_message);
-        });
-
-        // Publish simulated clock
+        // Publish /clock message
         rosgraph_msgs::msg::Clock clock_msg;
         clock_msg.clock = simulated_time_;
         clock_pub_->publish(clock_msg);

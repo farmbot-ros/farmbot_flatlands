@@ -12,9 +12,11 @@
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 
+#include "farmbot_flatlands/plugins/plugin.hpp"
+
 namespace sim {
     namespace plugins {
-        class IMUPlugin {
+        class IMUPlugin : Plugin {
             private:
                 rclcpp::Node::SharedPtr node_;
                 std::string topic_;
@@ -27,7 +29,7 @@ namespace sim {
                 rclcpp::Time last_time_;
 
             public:
-                IMUPlugin() = default;
+                void tick2(const rclcpp::Time &current_time) override { return; }
 
                 IMUPlugin(rclcpp::Node::SharedPtr node, const std::string & topic, const nav_msgs::msg::Odometry & odom)
                     : node_(node),
