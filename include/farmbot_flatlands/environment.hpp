@@ -25,17 +25,17 @@ namespace sim {
     // The Environment class
     class Environment {
         private:
+            rclcpp::Node::SharedPtr node_;
             sensor_msgs::msg::NavSatFix datum_;
             std::vector<double> datum_param_;
-            rclcpp::Node::SharedPtr node_;
-            std::vector<std::shared_ptr<actor::CircularObstacle>> obstacles_;
+            std::vector<std::shared_ptr<actor::Obstacle>> obstacles_;
             std::vector<std::shared_ptr<actor::Zone>> zones_;
             rclcpp::Logger logger_;
         public:
             Environment(const rclcpp::Node::SharedPtr& node);
             ~Environment();
             // Methods to add/remove obstacles and zones
-            void add_obstacle(const std::shared_ptr<actor::CircularObstacle>& obstacle);
+            void add_obstacle(const std::shared_ptr<actor::Obstacle>& obstacle);
             void add_zone(const std::shared_ptr<actor::Zone>& zone);
             // Method to check if a point is in any obstacle
             bool is_collision(const geometry_msgs::msg::Point& point) const;
@@ -60,7 +60,7 @@ namespace sim {
             }
         inline Environment::~Environment() {}
 
-        inline void Environment::add_obstacle(const std::shared_ptr<actor::CircularObstacle>& obstacle) {
+        inline void Environment::add_obstacle(const std::shared_ptr<actor::Obstacle>& obstacle) {
             obstacles_.push_back(obstacle);
             RCLCPP_INFO(logger_, "Added obstacle");
         }

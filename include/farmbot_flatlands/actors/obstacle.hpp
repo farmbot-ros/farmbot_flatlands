@@ -23,8 +23,15 @@
 namespace sim {
     namespace actor{
 
+        class Obstacle : public Actor {
+            public:
+                Obstacle() {}
+                virtual bool contains(const geometry_msgs::msg::Point& point) const = 0;
+                virtual ActorType get_type() const = 0;
+        };
+
         // Rectangle obstacle
-        class RectangleObstacle : public Actor {
+        class RectangleObstacle : public Obstacle {
             private:
                 double xmin_, xmax_, ymin_, ymax_;
             public:
@@ -40,7 +47,7 @@ namespace sim {
         }
 
         // Circular obstacle
-        class CircularObstacle : public Actor {
+        class CircularObstacle : public Obstacle {
             private:
                 double x_center_, y_center_, radius_;
             public:
