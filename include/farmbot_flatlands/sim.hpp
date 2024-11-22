@@ -70,11 +70,11 @@ namespace sim {
             // Diagnostic Updater
             diagnostic_updater::Updater updater_;
             diagnostic_msgs::msg::DiagnosticStatus status;
+            rclcpp::TimerBase::SharedPtr diagnostic_timer_;
             // Vector of robots
             int num_robots_;
             std::vector<std::shared_ptr<Robot>> robots_;
             std::vector<rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr> vel_subs_;
-
             // Environment instance
             std::shared_ptr<Environment> env_;
             // Seed for random number generator
@@ -91,6 +91,9 @@ namespace sim {
             // Service callbacks
             void pause_callback(const std::shared_ptr<Trigger::Request> request, std::shared_ptr<Trigger::Response> response);
             void speed_callback(const std::shared_ptr<Value::Request> request, std::shared_ptr<Value::Response> response);
+            // Diagnostics
+            void diagnostic_callback();
+            void check_system(diagnostic_updater::DiagnosticStatusWrapper &stat);
     };
 
     // Implementation of SIM class methods
@@ -125,6 +128,11 @@ namespace sim {
         this->declare_parameter<double>("simulation_speed", 1.0);
         this->get_parameter("simulation_speed", simulation_speed_);
 
+        // Diagnostics
+        updater_.setHardwareID(static_cast<std::string>(this->get_namespace()) + "/sim");
+        updater_.add("Navigation Status", this, &SIM::check_system);
+        diagnostic_timer_ = this->create_wall_timer(1s, std::bind(&SIM::diagnostic_callback, this));
+
         RCLCPP_INFO(this->get_logger(), "SIM initialized.");
     }
 
@@ -145,9 +153,16 @@ namespace sim {
                 robot_name+"/cmd_vel", 10,
                 [this, i](geometry_msgs::msg::Twist::SharedPtr msg) { robots_[i]->set_twist(*msg); }));
         }
-
         // Start the simulator
         loop_timer_ = this->create_wall_timer(std::chrono::duration<double>(1.0 / publish_rate_), std::bind(&SIM::update_loop, this));
+    }
+
+    inline void SIM::diagnostic_callback() {
+        updater_.force_update();
+    }
+
+    inline void SIM::check_system(diagnostic_updater::DiagnosticStatusWrapper &stat) {
+        stat.summary(status.level, status.message);
     }
 
     inline void SIM::update_loop(){
