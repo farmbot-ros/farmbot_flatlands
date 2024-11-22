@@ -8,7 +8,8 @@
 #include <vector>
 
 #include "rclcpp/rclcpp.hpp"
-#include "nav_msgs/msg/odometry.hpp"
+#include "geometry_msgs/msg/point.hpp"
+#include "farmbot_flatlands/types.hpp"
 
 namespace sim {
 
@@ -22,6 +23,7 @@ namespace sim {
     class Actor {
         public:
             virtual ~Actor() = default;
+            virtual bool contains(const Point& point) const = 0;
             virtual bool contains(const geometry_msgs::msg::Point& point) const = 0;
             virtual ActorType get_type() const = 0;
     };

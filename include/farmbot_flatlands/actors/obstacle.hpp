@@ -14,8 +14,12 @@
 // For the Robot state
 #include "nav_msgs/msg/odometry.hpp"
 #include "sensor_msgs/msg/nav_sat_fix.hpp"
+// Include Boost geometry
+#include <boost/geometry.hpp>
+#include <boost/geometry/algorithms/detail/within/interface.hpp>
 
 #include "farmbot_flatlands/actors/actor.hpp"
+#include "farmbot_flatlands/types.hpp"
 
 // Other necessary includes
 #include <rclcpp/rclcpp.hpp>
@@ -23,45 +27,23 @@
 namespace sim {
     namespace actor{
 
-        class Obstacle : public Actor {
-            public:
-                Obstacle() {}
-                virtual bool contains(const geometry_msgs::msg::Point& point) const = 0;
-                virtual ActorType get_type() const = 0;
-        };
-
         // Rectangle obstacle
-        class RectangleObstacle : public Obstacle {
+        class Obstacle : public Actor {
             private:
-                double xmin_, xmax_, ymin_, ymax_;
+                Polygon polygon_;
             public:
-                RectangleObstacle(double xmin, double xmax, double ymin, double ymax);
+                Obstacle(const Polygon& polygon);
+                bool contains(const Point& point) const override;
                 bool contains(const geometry_msgs::msg::Point& point) const override;
                 ActorType get_type() const override { return ActorType::OBSTACLE; }
             };
-        // RectangleObstacle implementation
-        inline RectangleObstacle::RectangleObstacle(double xmin, double xmax, double ymin, double ymax)
-            : xmin_(xmin), xmax_(xmax), ymin_(ymin), ymax_(ymax) {}
-        inline bool RectangleObstacle::contains(const geometry_msgs::msg::Point& point) const {
-            return (point.x >= xmin_ && point.x <= xmax_ && point.y >= ymin_ && point.y <= ymax_);
+        // Obstacle implementation
+        inline Obstacle::Obstacle(const Polygon& polygon) : polygon_(polygon) {}
+        inline bool Obstacle::contains(const Point& point) const {
+            return boost::geometry::within(point, polygon_);
         }
-
-        // Circular obstacle
-        class CircularObstacle : public Obstacle {
-            private:
-                double x_center_, y_center_, radius_;
-            public:
-                CircularObstacle(double x_center, double y_center, double radius);
-                bool contains(const geometry_msgs::msg::Point& point) const override;
-                ActorType get_type() const override { return ActorType::OBSTACLE; }
-            };
-        // CircularObstacle implementation
-        inline CircularObstacle::CircularObstacle(double x_center, double y_center, double radius)
-            : x_center_(x_center), y_center_(y_center), radius_(radius) {}
-        inline bool CircularObstacle::contains(const geometry_msgs::msg::Point& point) const {
-            double dx = point.x - x_center_;
-            double dy = point.y - y_center_;
-            return (dx*dx + dy*dy) <= (radius_*radius_);
+        inline bool Obstacle::contains(const geometry_msgs::msg::Point& point) const {
+            return contains(Point(point.x, point.y));
         }
 
     }// namespace actor

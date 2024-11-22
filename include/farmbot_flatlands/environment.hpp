@@ -17,6 +17,7 @@
 // Include actors
 #include "farmbot_flatlands/actors/obstacle.hpp"
 #include "farmbot_flatlands/actors/zone.hpp"
+#include "farmbot_flatlands/types.hpp"
 
 // Other necessary includes
 #include <rclcpp/rclcpp.hpp>
