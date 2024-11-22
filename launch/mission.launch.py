@@ -1,4 +1,3 @@
-# send_waypoints_launch.py
 import os
 import yaml
 
@@ -9,27 +8,15 @@ from ament_index_python.packages import get_package_share_directory
 
 
 def generate_mission_goal(robot_id, num_robots=1, length=80.0, num_rows=6):
-    base_poses = [
-        {"position": {"x": 0.0,     "y": (num_robots*0)+float(robot_id),    "z": 0.0}},
-        {"position": {"x": length,  "y": (num_robots*0)+float(robot_id),    "z": 0.0}},
-        {"position": {"x": length,  "y": (num_robots*1)+float(robot_id),    "z": 0.0}},
-        {"position": {"x": 0.0,     "y": (num_robots*1)+float(robot_id),    "z": 0.0}},
-
-        {"position": {"x": 0.0,     "y": (num_robots*2)+float(robot_id),    "z": 0.0}},
-        {"position": {"x": length,  "y": (num_robots*2)+float(robot_id),    "z": 0.0}},
-        {"position": {"x": length,  "y": (num_robots*3)+float(robot_id),    "z": 0.0}},
-        {"position": {"x": 0.0,     "y": (num_robots*3)+float(robot_id),    "z": 0.0}},
-
-        {"position": {"x": 0.0,     "y": (num_robots*4)+float(robot_id),    "z": 0.0}},
-        {"position": {"x": length,  "y": (num_robots*4)+float(robot_id),    "z": 0.0}},
-        {"position": {"x": length,  "y": (num_robots*5)+float(robot_id),    "z": 0.0}},
-        {"position": {"x": 0.0,     "y": (num_robots*5)+float(robot_id),    "z": 0.0}},
-
-        {"position": {"x": 0.0,     "y": (num_robots*6)+float(robot_id),    "z": 0.0}},
-        {"position": {"x": length,  "y": (num_robots*6)+float(robot_id),    "z": 0.0}},
-        {"position": {"x": length,  "y": (num_robots*7)+float(robot_id),    "z": 0.0}},
-        {"position": {"x": 0.0,     "y": (num_robots*7)+float(robot_id),    "z": 0.0}},
-    ]
+    base_poses = []
+    for i in range(16):
+        y = (num_robots * i) + float(robot_id)
+        if i % 2 == 0:
+            base_poses.append({"position": {"x": 0.0,     "y": y,    "z": 0.0}})
+            base_poses.append({"position": {"x": length,  "y": y,    "z": 0.0}})
+        else:
+            base_poses.append({"position": {"x": length,  "y": y,    "z": 0.0}})
+            base_poses.append({"position": {"x": 0.0,     "y": y,    "z": 0.0}})
 
     # Apply offsets to each pose
     poses = []
