@@ -20,6 +20,7 @@
 #include "farmbot_flatlands/plugins/compass.hpp"
 
 #include "farmbot_flatlands/robot.hpp"
+#include "farmbot_flatlands/environment.hpp"
 
 // TF2 Headers
 #include "tf2/LinearMath/Quaternion.h"
@@ -59,16 +60,7 @@ namespace sim {
 
             // Parameters
             double publish_rate_;
-            std::string vel_topic_;
-            std::string fix_topic_;
-            std::string imu_topic_;
-            std::string gyro_topic_;
-            std::string compass_topic_;
-
-            double latitude_;
-            double longitude_;
-            double altitude_;
-            double heading_;
+            std::vector<double> datum_;
 
             // Fix message for GPS
             sensor_msgs::msg::NavSatFix fix_;
@@ -94,29 +86,28 @@ namespace sim {
             diagnostic_msgs::msg::DiagnosticStatus status;
 
             // Plugins
-            plugins::GPSPlugin gps_plugin_;
-            plugins::IMUPlugin imu_plugin_;
-            plugins::GyroPlugin gyro_plugin_;
-            plugins::CompassPlugin compass_plugin_;
+            std::shared_ptr<plugins::GPSPlugin> gps_plugin_;
+            std::shared_ptr<plugins::IMUPlugin> imu_plugin_;
+            std::shared_ptr<plugins::GyroPlugin> gyro_plugin_;
+            std::shared_ptr<plugins::CompassPlugin> compass_plugin_;
 
             // Robot instance
             std::shared_ptr<Robot> robot_;
 
+            // Environment instance
+            std::shared_ptr<Environment> env_;
+
         public:
             SIM(const rclcpp::NodeOptions & options = rclcpp::NodeOptions());
             ~SIM();
-
             void start();
 
         private:
             void vel_callback(const geometry_msgs::msg::Twist::SharedPtr msg);
             void update_loop();
-
             // Service callbacks
-
             void pause_callback(const std::shared_ptr<Trigger::Request> request, std::shared_ptr<Trigger::Response> response);
             void speed_callback(const std::shared_ptr<Value::Request> request, std::shared_ptr<Value::Response> response);
-
     };
 
     // Implementation of SIM class methods
@@ -125,24 +116,8 @@ namespace sim {
         // Declare and get parameters
         this->declare_parameter<double>("publish_rate", 10.0);
         this->get_parameter("publish_rate", publish_rate_);
-        this->declare_parameter<std::string>("velocity_topic", "cmd_vel");
-        this->get_parameter("velocity_topic", vel_topic_);
-        this->declare_parameter<std::string>("imu_topic", "imu");
-        this->get_parameter("imu_topic", imu_topic_);
-        this->declare_parameter<std::string>("gnss_topic", "gnss");
-        this->get_parameter("gnss_topic", fix_topic_);
-        this->declare_parameter<std::string>("gyro_topic", "gyro");
-        this->get_parameter("gyro_topic", gyro_topic_);
-        this->declare_parameter<std::string>("compass_topic", "compass");
-        this->get_parameter("compass_topic", compass_topic_);
-        this->declare_parameter<double>("latitude", 0.0);
-        this->get_parameter("latitude", latitude_);
-        this->declare_parameter<double>("longitude", 0.0);
-        this->get_parameter("longitude", longitude_);
-        this->declare_parameter<double>("altitude", 0.0);
-        this->get_parameter("altitude", altitude_);
-        this->declare_parameter<double>("heading", 0.0);
-        this->get_parameter("heading", heading_);
+        this->declare_parameter<std::vector<double>>("datum", {0.0, 0.0, 0.0});
+        this->get_parameter("datum", datum_);
 
         // Diagnostic
         status.level = diagnostic_msgs::msg::DiagnosticStatus::WARN;
@@ -153,7 +128,7 @@ namespace sim {
         last_update_ = simulated_time_;
 
         // Subscriber for velocity commands
-        vel_sub_ = this->create_subscription<geometry_msgs::msg::Twist>( vel_topic_, 10, std::bind(&SIM::vel_callback, this, _1));
+        vel_sub_ = this->create_subscription<geometry_msgs::msg::Twist>("cmd_vel", 10, std::bind(&SIM::vel_callback, this, _1));
 
         // Play / Pause Service
         pause_service_ = this->create_service<Trigger>("/sim/pause", std::bind(&SIM::pause_callback, this, _1, _2));
@@ -168,9 +143,9 @@ namespace sim {
 
         // Initialize fix message
         fix_.header.frame_id = "gps";
-        fix_.latitude = latitude_;
-        fix_.longitude = longitude_;
-        fix_.altitude = altitude_;
+        fix_.latitude = datum_[0];
+        fix_.longitude = datum_[1];
+        fix_.altitude = datum_[2];
         fix_.position_covariance_type = sensor_msgs::msg::NavSatFix::COVARIANCE_TYPE_UNKNOWN;
 
         RCLCPP_INFO(this->get_logger(), "SIM initialized.");
@@ -182,21 +157,20 @@ namespace sim {
     }
 
     inline void SIM::start(){
+        // Initialize Environment
+        env_ = std::make_shared<Environment>(this->shared_from_this());
         // Initialize Robot with initial heading (converted to radians)
-        robot_ = std::make_shared<Robot>(this->shared_from_this(), heading_ * M_PI / 180.0);
+        robot_ = std::make_shared<Robot>(this->shared_from_this(), env_ ,0.0);
         // Create GPS Plugin
-        gps_plugin_ = plugins::GPSPlugin(this->shared_from_this(), fix_topic_, fix_);
+        gps_plugin_ = std::make_shared<plugins::GPSPlugin>(this->shared_from_this(), "gnss", fix_);
         // Create IMU Plugin
-        imu_plugin_ = plugins::IMUPlugin(this->shared_from_this(), imu_topic_, robot_->get_odom());
+        imu_plugin_ = std::make_shared<plugins::IMUPlugin>(this->shared_from_this(), "imu", robot_->get_odom());
         // Create Gyro Plugin
-        gyro_plugin_ = plugins::GyroPlugin(this->shared_from_this(), gyro_topic_, robot_->get_odom());
+        gyro_plugin_ = std::make_shared<plugins::GyroPlugin>(this->shared_from_this(), "gyro", robot_->get_odom());
         // Create Compass Plugin
-        compass_plugin_ = plugins::CompassPlugin(this->shared_from_this(), compass_topic_, robot_->get_odom());
+        compass_plugin_ = std::make_shared<plugins::CompassPlugin>(this->shared_from_this(), "compass", robot_->get_odom());
         // Start the simulator
-        loop_timer_ = this->create_wall_timer(
-            std::chrono::duration<double>(1.0 / publish_rate_),
-            std::bind(&SIM::update_loop, this)
-        );
+        loop_timer_ = this->create_wall_timer(std::chrono::duration<double>(1.0 / publish_rate_), std::bind(&SIM::update_loop, this));
     }
 
     inline void SIM::vel_callback(const geometry_msgs::msg::Twist::SharedPtr msg){
@@ -240,16 +214,16 @@ namespace sim {
 
         // Dispatch plugin tick calls asynchronously
         auto gps_future = std::async(std::launch::async, [this, current_time, odom_copy, has_new_message]() {
-            gps_plugin_.tick(current_time, odom_copy, has_new_message);
+            gps_plugin_->tick(current_time, odom_copy, has_new_message);
         });
         auto imu_future = std::async(std::launch::async, [this, current_time, odom_copy, has_new_message]() {
-            imu_plugin_.tick(current_time, odom_copy, has_new_message);
+            imu_plugin_->tick(current_time, odom_copy, has_new_message);
         });
         auto gyro_future = std::async(std::launch::async, [this, current_time, odom_copy, has_new_message]() {
-            gyro_plugin_.tick(current_time, odom_copy, has_new_message);
+            gyro_plugin_->tick(current_time, odom_copy, has_new_message);
         });
         auto compass_future = std::async(std::launch::async, [this, current_time, odom_copy, has_new_message]() {
-            compass_plugin_.tick(current_time, odom_copy, has_new_message);
+            compass_plugin_->tick(current_time, odom_copy, has_new_message);
         });
 
         // Publish simulated clock

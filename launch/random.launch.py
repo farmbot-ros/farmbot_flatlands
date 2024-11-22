@@ -120,13 +120,12 @@ def launch_setup(context, *args, **kwargs):
             executable='simulator',
             name='simulator',
             namespace=namespace,
-            parameters=[
-                {'publish_rate': 10.0},
-                {'latitude': robot_latitude},
-                {'longitude': robot_longitude},
-                {'altitude': robot_altitude},
-                {'heading': heading}
-            ],
+            parameters=[{
+                'publish_rate': 10.0,
+                'datum': [robot_latitude, robot_longitude, robot_altitude],
+                'max_linear_accel': 0.7,
+                'max_angular_accel': 0.7,
+            }],
             output='screen'
         )
 
