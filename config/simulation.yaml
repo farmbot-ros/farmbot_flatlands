@@ -1,7 +1,8 @@
 global:
     ros__parameters:
         # [latitude, longitude, altitude]
-        datum: [51.937587, 5.705458, 53.801823]
+        # datum: [51.937587, 5.705458, 53.801823] # Randwijck
+        datum: [51.987305, 5.663625, 53.801823] # Wageningen
         num_robots: 3
         max_distance: 100.0
         min_distance: 50.0

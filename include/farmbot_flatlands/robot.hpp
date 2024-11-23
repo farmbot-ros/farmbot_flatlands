@@ -69,10 +69,7 @@ namespace sim {
     inline Robot::Robot(
         const rclcpp::Node::SharedPtr& node,
         std::shared_ptr<Environment> environment)
-        : node_(node),
-            environment_(environment),
-            logger_(node->get_logger())
-    {
+        : node_(node), environment_(environment), logger_(node->get_logger()) {
         // Initialize odometry message
         odom_.header.frame_id = "world";
         odom_.child_frame_id = "base_link";

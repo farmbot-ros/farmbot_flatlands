@@ -94,8 +94,6 @@ find_package(PCL REQUIRED)
 include_directories(${PCL_INCLUDE_DIRS})
 link_directories(${PCL_LIBRARY_DIRS})
 add_definitions(${PCL_DEFINITIONS})
-set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "/usr/share/cmake/geographiclib/")
-find_package(GeographicLib REQUIRED)
 find_package(nlohmann_json REQUIRED)
 #find curl
 find_package(CURL REQUIRED)
@@ -108,7 +106,6 @@ set(dependencies_sys
     ${PCL_LIBRARIES}
     ${Eigen_LIBRARIES}
     nlohmann_json::nlohmann_json
-    ${GeographicLib_LIBRARIES}
     ${CURL_LIBRARIES}
     Qt5::Widgets
 )
