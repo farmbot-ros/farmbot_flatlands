@@ -19,8 +19,10 @@
 #include <cmath>
 #include <tuple>
 #include <algorithm> // For std::clamp
+#include <chrono>
+#include <random>
 
-#include "farmbot_flatlands/environment.hpp"
+#include "farmbot_flatlands/envi.hpp"
 #include "farmbot_flatlands/plugins/plugin.hpp"
 
 #include "farmbot_flatlands/plugins/gps.hpp"
@@ -56,13 +58,14 @@ namespace sim {
 
         public:
             Robot(const rclcpp::Node::SharedPtr& node, std::shared_ptr<Environment> environment);
-            void init(std::string name, nav_msgs::msg::Odometry odom);
+            void init(std::string name, nav_msgs::msg::Odometry odom = random_odom(-100, 100));
             void set_twist(const geometry_msgs::msg::Twist& twist);
             void update(double delta_t, const rclcpp::Time & current_time);
             // Getter for odometry
             nav_msgs::msg::Odometry get_odom() const;
             // Getter for robot's position (x, y, z)
             std::tuple<double, double, double> get_position() const;
+            static nav_msgs::msg::Odometry random_odom(int min, int max);
     };
 
     // Implementation of Robot class methods
@@ -79,7 +82,9 @@ namespace sim {
         target_twist_ = geometry_msgs::msg::Twist();
 
         // Get parameters for maximum accelerations
+        // node->declare_parameter<double>("max_linear_accel", 0.7);   // m/s²
         node->get_parameter("max_linear_accel", max_linear_accel_);
+        // node->declare_parameter<double>("max_angular_accel", 0.7);  // rad/s²
         node->get_parameter("max_angular_accel", max_angular_accel_);
     }
 
@@ -207,6 +212,21 @@ namespace sim {
             odom_.pose.pose.position.z
         );
     }
+
+    inline nav_msgs::msg::Odometry Robot::random_odom(int min=100, int max=200){
+        std::random_device rd_;
+        std::mt19937 gen(rd_());
+        std::uniform_int_distribution<int> dist(min, max);
+        nav_msgs::msg::Odometry odom;
+        odom.pose.pose.position.x = dist(gen)*1.0;
+        odom.pose.pose.position.y = dist(gen)*1.0;
+        odom.pose.pose.position.z = 0.0;
+        // random orientation
+        std::uniform_real_distribution<double> dist2(-M_PI, M_PI);
+        odom.pose.pose.orientation = tf2::toMsg(tf2::Quaternion(tf2::Vector3(0, 0, 1), dist2(gen)));
+        return odom;
+    }
+
 } // namespace sim
 
 #endif // ROBOT_HPP
