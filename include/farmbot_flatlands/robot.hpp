@@ -81,9 +81,7 @@ namespace sim {
             name_(name)
         {
         twist_sub_ = node->create_subscription<geometry_msgs::msg::Twist>(
-            name_ + "/cmd_vel", 10, [this](const geometry_msgs::msg::Twist::SharedPtr msg) {
-                this->set_twist(*msg);
-            });
+            name_ + "/cmd_vel", 10, std::bind(&Robot::set_twist, this, std::placeholders::_1));
         // Initialize odometry message
         odom_.header.frame_id = "world";
         odom_.child_frame_id = "base_link";

@@ -14,7 +14,7 @@
 #include "farmbot_interfaces/srv/value.hpp"
 
 #include "farmbot_flatlands/robot.hpp"
-// #include "farmbot_flatlands/envi.hpp"
+#include "farmbot_flatlands/envi.hpp"
 #include "farmbot_flatlands/world.hpp"
 
 // TF2 Headers
@@ -40,8 +40,8 @@ using diag = diagnostic_msgs::msg::DiagnosticStatus;
 #include <string>
 #include <cmath>
 #include <tuple>
-#include <future> // For std::async
-#include <algorithm> // For std::clamp
+#include <future>
+#include <algorithm>
 
 using namespace std::chrono_literals;
 using namespace std::placeholders;
@@ -82,9 +82,8 @@ namespace sim {
             int num_robots_;
             std::vector<std::shared_ptr<Robot>> robots_;
             // Environment instance
-            // std::shared_ptr<Environment> env_;
+            std::shared_ptr<Environment> env_;
             // Seed for random number generator
-            std::random_device rd_;
 
         public:
             SIM(const rclcpp::NodeOptions & options = rclcpp::NodeOptions());
@@ -94,7 +93,6 @@ namespace sim {
 
         private:
             void update_loop();
-            nav_msgs::msg::Odometry random_odom(int min, int max);
             // Service callbacks
             void pause_callback(const std::shared_ptr<Trigger::Request> request, std::shared_ptr<Trigger::Response> response);
             void speed_callback(const std::shared_ptr<Value::Request> request, std::shared_ptr<Value::Response> response);
@@ -155,9 +153,7 @@ namespace sim {
     }
 
     inline void SIM::start_simulation(){
-        // Initialize Environment
-        // env_ = std::make_shared<Environment>(this->shared_from_this(), world_);
-        // Initialize Robots
+        env_ = std::make_shared<Environment>(this->shared_from_this(), world_);
         for (int i = 0; i < num_robots_; i++){
             std::string robot_name = "robot" + std::to_string(i);
             robots_.push_back(std::make_shared<Robot>(robot_name, this->shared_from_this(), world_));
@@ -189,10 +185,11 @@ namespace sim {
         double delta_t = time_increment;
         world_->Step(time_increment);
 
-        // Update robot state
+        // Update robot state and environment
         for (int i = 0; i < num_robots_; i++){
             robots_[i]->update(delta_t, simulated_time_);
         }
+        env_->update(delta_t, simulated_time_);
 
         // Publish /clock message
         rosgraph_msgs::msg::Clock clock_msg;

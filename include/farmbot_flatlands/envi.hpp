@@ -39,6 +39,8 @@ namespace sim {
         public:
             Environment(const rclcpp::Node::SharedPtr& node, std::shared_ptr<World> world);
             ~Environment();
+            // Update
+            void update(double delta_t, const rclcpp::Time & current_time);
             // Methods to add/remove obstacles and zones
             void add_obstacle(const std::shared_ptr<actor::Obstacle>& obstacle);
             void add_zone(const std::shared_ptr<actor::Zone>& zone);
@@ -52,6 +54,8 @@ namespace sim {
         inline Environment::Environment(const rclcpp::Node::SharedPtr& node, std::shared_ptr<World> world)
             : world_(world), node_(node), logger_(node->get_logger()) {}
         inline Environment::~Environment() {}
+
+        inline void update(double dt, double sim_time) {}
 
         inline void Environment::add_obstacle(const std::shared_ptr<actor::Obstacle>& obstacle) {
             obstacles_.push_back(obstacle);
