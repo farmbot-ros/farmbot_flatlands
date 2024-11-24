@@ -9,7 +9,7 @@
 
 #include "rclcpp/rclcpp.hpp"
 #include "geometry_msgs/msg/point.hpp"
-#include "farmbot_flatlands/types.hpp"
+#include "farmbot_flatlands/utils/types.hpp"
 
 namespace sim {
 

@@ -19,7 +19,7 @@
 #include "sensor_msgs/msg/nav_sat_fix.hpp"
 
 #include "farmbot_flatlands/actors/actor.hpp"
-#include "farmbot_flatlands/types.hpp"
+#include "farmbot_flatlands/utils/types.hpp"
 
 // Other necessary includes
 #include <rclcpp/rclcpp.hpp>

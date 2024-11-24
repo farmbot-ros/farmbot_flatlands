@@ -1,10 +1,16 @@
 #ifndef CORDS_HPP
 #define CORDS_HPP
 
+#include <tf2/LinearMath/Quaternion.h>
 #include <tuple>
 #include <cmath>
 
 namespace sim{
+    namespace angle {
+        double theta(tf2::Quaternion q) {
+            return std::atan2(2 * (q.w() * q.z() + q.x() * q.y()), 1 - 2 * (q.y() * q.y() + q.z() * q.z()));
+        }
+    }
     namespace loc {
         // Constants
         const double R = 6378137.0;                // Earth's radius in meters (equatorial radius)

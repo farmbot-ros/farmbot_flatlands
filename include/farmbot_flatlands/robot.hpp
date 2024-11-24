@@ -2,6 +2,7 @@
 #define ROBOT_HPP
 
 #include "muli/math.h"
+#include "muli/rigidbody.h"
 #include "rclcpp/rclcpp.hpp"
 
 // Message Types
@@ -39,6 +40,7 @@ namespace sim {
             //Pointer to the node
             rclcpp::Node::SharedPtr node_;
             std::shared_ptr<World> world_;
+            muli::RigidBody* robot_;
             rclcpp::Logger logger_;
 
             std::string name_;
@@ -63,6 +65,7 @@ namespace sim {
             void init(nav_msgs::msg::Odometry odom = random_odom(-100, 100));
             void set_twist(const geometry_msgs::msg::Twist& twist);
             void update(double delta_t, const rclcpp::Time & current_time);
+            void update_alt(double delta_t, const rclcpp::Time & current_time);
             // getters
             nav_msgs::msg::Odometry get_odom() const;
             sensor_msgs::msg::NavSatFix get_datum() const;
@@ -107,10 +110,18 @@ namespace sim {
         gyro_plugin_ = std::make_shared<plugins::GyroPlugin>(node_, name_ + "/gyro", get_odom());
         // Create Compass Plugin
         compass_plugin_ = std::make_shared<plugins::CompassPlugin>(node_, name_ + "/compass", get_odom());
+
+        // Add robot to world
+        robot_ = world_->add_robot(1.0f, 0.5f, name_);
+        robot_->SetPosition(odom_.pose.pose.position.x, odom_.pose.pose.position.y);
     }
 
     inline void Robot::set_twist(const geometry_msgs::msg::Twist& twist) {
         target_twist_ = twist;
+    }
+
+    inline void Robot::update_alt(double delta_t, const rclcpp::Time & current_time) {
+        // robot_->set(a)
     }
 
     inline void Robot::update(double delta_t, const rclcpp::Time & current_time) {

@@ -20,7 +20,7 @@
 #include "muli/world.h"
 #include "farmbot_flatlands/actors/obstacle.hpp"
 #include "farmbot_flatlands/actors/zone.hpp"
-#include "farmbot_flatlands/types.hpp"
+#include "farmbot_flatlands/utils/types.hpp"
 
 // World
 #include "farmbot_flatlands/world.hpp"
@@ -56,7 +56,7 @@ namespace sim {
             : world_(world), node_(node), logger_(node->get_logger()) {}
         inline Environment::~Environment() {}
 
-        inline void update(double dt, double sim_time) {}
+        inline void Environment::update(double dt, const rclcpp::Time & current_time) {}
 
         inline void Environment::add_obstacle(const std::shared_ptr<actor::Obstacle>& obstacle) {
             obstacles_.push_back(obstacle);

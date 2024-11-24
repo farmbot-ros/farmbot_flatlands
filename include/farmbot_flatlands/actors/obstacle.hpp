@@ -19,7 +19,7 @@
 #include <boost/geometry/algorithms/detail/within/interface.hpp>
 
 #include "farmbot_flatlands/actors/actor.hpp"
-#include "farmbot_flatlands/types.hpp"
+#include "farmbot_flatlands/utils/types.hpp"
 
 // Other necessary includes
 #include <rclcpp/rclcpp.hpp>
