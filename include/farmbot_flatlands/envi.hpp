@@ -15,6 +15,8 @@
 #include "sensor_msgs/msg/nav_sat_fix.hpp"
 
 // Include actors
+#include "muli/settings.h"
+#include "muli/world.h"
 #include "farmbot_flatlands/actors/obstacle.hpp"
 #include "farmbot_flatlands/actors/zone.hpp"
 #include "farmbot_flatlands/types.hpp"

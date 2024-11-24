@@ -55,10 +55,11 @@ namespace sim {
             geometry_msgs::msg::Twist target_twist_;
             double max_linear_accel_;   // meters per second squared
             double max_angular_accel_;  // radians per second squared
+            rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr twist_sub_;
 
         public:
-            Robot(const rclcpp::Node::SharedPtr& node, std::shared_ptr<World> world);
-            void init(std::string name, nav_msgs::msg::Odometry odom = random_odom(-100, 100));
+            Robot(std::string name, const rclcpp::Node::SharedPtr& node, std::shared_ptr<World> world);
+            void init(nav_msgs::msg::Odometry odom = random_odom(-100, 100));
             void set_twist(const geometry_msgs::msg::Twist& twist);
             void update(double delta_t, const rclcpp::Time & current_time);
             // getters
@@ -71,9 +72,18 @@ namespace sim {
 
     // Implementation of Robot class methods
     inline Robot::Robot(
+        std::string name,
         const rclcpp::Node::SharedPtr& node,
-        std::shared_ptr<World> world)
-        : node_(node), world_(world), logger_(node->get_logger()) {
+        std::shared_ptr<World> world):
+            node_(node),
+            world_(world),
+            logger_(node->get_logger()),
+            name_(name)
+        {
+        twist_sub_ = node->create_subscription<geometry_msgs::msg::Twist>(
+            name_ + "/cmd_vel", 10, [this](const geometry_msgs::msg::Twist::SharedPtr msg) {
+                this->set_twist(*msg);
+            });
         // Initialize odometry message
         odom_.header.frame_id = "world";
         odom_.child_frame_id = "base_link";
@@ -88,9 +98,7 @@ namespace sim {
         node->get_parameter("max_angular_accel", max_angular_accel_);
     }
 
-    inline void Robot::init(std::string name, nav_msgs::msg::Odometry odom) {
-        name_ = name;
-        // Set initial odometry
+    inline void Robot::init(nav_msgs::msg::Odometry odom) {
         odom_ = odom;
         // Create GPS Plugin
         gps_plugin_ = std::make_shared<plugins::GPSPlugin>(node_, name_ + "/gnss", get_datum());

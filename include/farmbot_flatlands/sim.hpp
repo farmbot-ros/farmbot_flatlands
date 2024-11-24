@@ -14,7 +14,7 @@
 #include "farmbot_interfaces/srv/value.hpp"
 
 #include "farmbot_flatlands/robot.hpp"
-#include "farmbot_flatlands/envi.hpp"
+// #include "farmbot_flatlands/envi.hpp"
 #include "farmbot_flatlands/world.hpp"
 
 // TF2 Headers
@@ -81,9 +81,8 @@ namespace sim {
             // Vector of robots
             int num_robots_;
             std::vector<std::shared_ptr<Robot>> robots_;
-            std::vector<rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr> vel_subs_;
             // Environment instance
-            std::shared_ptr<Environment> env_;
+            // std::shared_ptr<Environment> env_;
             // Seed for random number generator
             std::random_device rd_;
 
@@ -157,15 +156,12 @@ namespace sim {
 
     inline void SIM::start_simulation(){
         // Initialize Environment
-        env_ = std::make_shared<Environment>(this->shared_from_this(), world_);
+        // env_ = std::make_shared<Environment>(this->shared_from_this(), world_);
         // Initialize Robots
         for (int i = 0; i < num_robots_; i++){
             std::string robot_name = "robot" + std::to_string(i);
-            robots_.push_back(std::make_shared<Robot>(this->shared_from_this(), world_));
-            robots_[i]->init(robot_name);
-            vel_subs_.push_back(this->create_subscription<geometry_msgs::msg::Twist>(
-                robot_name+"/cmd_vel", 10,
-                [this, i](geometry_msgs::msg::Twist::SharedPtr msg) { robots_[i]->set_twist(*msg); }));
+            robots_.push_back(std::make_shared<Robot>(robot_name, this->shared_from_this(), world_));
+            robots_[i]->init();
         }
         // Start the simulator
         loop_timer_ = this->create_wall_timer(std::chrono::duration<double>(1.0 / publish_rate_), std::bind(&SIM::update_loop, this));
