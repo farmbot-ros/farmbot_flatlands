@@ -1,0 +1,28 @@
+global:
+    ros__parameters:
+        # [latitude, longitude, altitude]
+        # datum: [51.937587, 5.705458, 53.801823] # Randwijck
+        datum: [51.987305, 5.663625, 53.801823] # Wageningen
+        num_robots: 3
+        max_distance: 100.0
+        min_distance: 50.0
+
+robots:
+    - namespace: robot0
+      initial_pose:
+          latitude: 51.93778674075392
+          longitude: 5.70576672207017
+          altitude: 53.80182320303043
+          heading: 45.0
+    - namespace: robot1
+      initial_pose:
+          latitude: 51.93724974075392
+          longitude: 5.70526372207017
+          altitude: 53.80182320303043
+          heading: 135.0
+    - namespace: robot2
+      initial_pose:
+          latitude: 51.93704974075392
+          longitude: 5.70506372207017
+          altitude: 53.80182320303043
+          heading: 135.0
