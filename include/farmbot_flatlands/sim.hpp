@@ -1,7 +1,6 @@
 #ifndef SIM_HPP
 #define SIM_HPP
 
-#include "muli/settings.h"
 #include "rclcpp/rclcpp.hpp"
 
 // Message Types
@@ -16,6 +15,7 @@
 
 #include "farmbot_flatlands/robot.hpp"
 #include "farmbot_flatlands/envi.hpp"
+#include "farmbot_flatlands/world.hpp"
 
 // TF2 Headers
 #include "tf2/LinearMath/Quaternion.h"
@@ -32,6 +32,7 @@ using diag = diagnostic_msgs::msg::DiagnosticStatus;
 
 // Standard Libraries
 #include <iostream>
+#include <random>
 #include <curl/curl.h>
 #include <ios>
 #include <memory>
@@ -41,8 +42,6 @@ using diag = diagnostic_msgs::msg::DiagnosticStatus;
 #include <tuple>
 #include <future> // For std::async
 #include <algorithm> // For std::clamp
-
-#include "muli/muli.h"
 
 using namespace std::chrono_literals;
 using namespace std::placeholders;
@@ -55,11 +54,13 @@ namespace sim {
     class SIM : public rclcpp::Node {
         private:
             //muli world
-            muli::WorldSettings world_settings_;
-            std::shared_ptr<muli::World> world_;
+            WorldSettings world_settings_;
+            std::shared_ptr<World> world_;
+
             // Parameters
             double simulation_speed_;
-            bool paused_;
+            std::vector<double> datum_param_;
+            bool paused_ = true;
             double publish_rate_;
 
             // Time tracking
@@ -83,14 +84,18 @@ namespace sim {
             std::vector<rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr> vel_subs_;
             // Environment instance
             std::shared_ptr<Environment> env_;
+            // Seed for random number generator
+            std::random_device rd_;
 
         public:
             SIM(const rclcpp::NodeOptions & options = rclcpp::NodeOptions());
             ~SIM();
-            void start();
+            void start_simulation();
+            void create_world();
 
         private:
             void update_loop();
+            nav_msgs::msg::Odometry random_odom(int min, int max);
             // Service callbacks
             void pause_callback(const std::shared_ptr<Trigger::Request> request, std::shared_ptr<Trigger::Response> response);
             void speed_callback(const std::shared_ptr<Value::Request> request, std::shared_ptr<Value::Response> response);
@@ -105,9 +110,16 @@ namespace sim {
         // Declare and get parameters
         this->declare_parameter<double>("publish_rate", 10.0);
         this->get_parameter("publish_rate", publish_rate_);
-
+        this->declare_parameter<std::vector<double>>("datum", {0.0, 0.0, 0.0});
+        this->get_parameter("datum", datum_param_);
         this->declare_parameter<int>("num_robots", 1);
         this->get_parameter("num_robots", num_robots_);
+        this->declare_parameter<double>("max_angular_accel", 0.7);  // rad/s²
+        this->declare_parameter<double>("max_linear_accel", 0.7);   // m/s²
+
+        // Diagnostic
+        status.level = diagnostic_msgs::msg::DiagnosticStatus::WARN;
+        status.message = "Not initialized";
 
         // Initialize simulated time
         simulated_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
@@ -129,10 +141,6 @@ namespace sim {
         updater_.add("Navigation Status", this, &SIM::check_system);
         diagnostic_timer_ = this->create_wall_timer(1s, std::bind(&SIM::diagnostic_callback, this));
 
-        //Woeld settings
-        world_settings_.apply_gravity = false;
-        world_ = std::make_shared<muli::World>(world_settings_);
-
         RCLCPP_INFO(this->get_logger(), "SIM initialized.");
     }
 
@@ -141,15 +149,19 @@ namespace sim {
         RCLCPP_INFO(this->get_logger(), "Simulator stopped.");
     }
 
-    inline void SIM::start(){
-        status.level = diag::WARN;
-        status.message = "Not initialized";
+    inline void SIM::create_world(){
+        world_settings_.apply_gravity = false;
+        world_settings_.set_datum(datum_param_);
+        world_ = std::make_shared<World>(world_settings_, this->shared_from_this());
+    }
+
+    inline void SIM::start_simulation(){
         // Initialize Environment
-        env_ = std::make_shared<Environment>(this->shared_from_this());
+        env_ = std::make_shared<Environment>(this->shared_from_this(), world_);
         // Initialize Robots
         for (int i = 0; i < num_robots_; i++){
             std::string robot_name = "robot" + std::to_string(i);
-            robots_.push_back(std::make_shared<Robot>(this->shared_from_this(), env_));
+            robots_.push_back(std::make_shared<Robot>(this->shared_from_this(), world_));
             robots_[i]->init(robot_name);
             vel_subs_.push_back(this->create_subscription<geometry_msgs::msg::Twist>(
                 robot_name+"/cmd_vel", 10,
@@ -157,6 +169,7 @@ namespace sim {
         }
         // Start the simulator
         loop_timer_ = this->create_wall_timer(std::chrono::duration<double>(1.0 / publish_rate_), std::bind(&SIM::update_loop, this));
+        paused_ = false;
     }
 
     inline void SIM::diagnostic_callback() {
@@ -178,7 +191,7 @@ namespace sim {
 
         // Compute time difference
         double delta_t = time_increment;
-        world_->Step(delta_t);
+        world_->Step(time_increment);
 
         // Update robot state
         for (int i = 0; i < num_robots_; i++){
@@ -204,6 +217,7 @@ namespace sim {
             simulation_speed_ = value;
         }
     }
+
 } // namespace sim
 
 #endif // SIM_HPP

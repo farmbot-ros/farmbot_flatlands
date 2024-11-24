@@ -8,8 +8,9 @@ int main(int argc, char** argv) {
     options.parameter_overrides({{"use_sim_time", true}});
     // Create the SIM node
     auto simulator = std::make_shared<sim::SIM>(options);
-    // Start the simulator (initialize plugins and start timer)
-    simulator->start();
+    // Start the simulator (initialize plugins and start_simulation timer)
+    simulator->create_world();
+    simulator->start_simulation();
     // Create a multi-threaded executor with, for example, 4 threads
     rclcpp::executors::MultiThreadedExecutor executor(rclcpp::ExecutorOptions(), 4);
     // Add the SIM node to the executor

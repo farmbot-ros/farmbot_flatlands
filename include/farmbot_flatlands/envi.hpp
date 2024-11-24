@@ -19,6 +19,9 @@
 #include "farmbot_flatlands/actors/zone.hpp"
 #include "farmbot_flatlands/types.hpp"
 
+// World
+#include "farmbot_flatlands/world.hpp"
+
 // Other necessary includes
 #include <rclcpp/rclcpp.hpp>
 
@@ -26,14 +29,13 @@ namespace sim {
     // The Environment class
     class Environment {
         private:
+            std::shared_ptr<World> world_;
             rclcpp::Node::SharedPtr node_;
-            sensor_msgs::msg::NavSatFix datum_;
-            std::vector<double> datum_param_;
             std::vector<std::shared_ptr<actor::Obstacle>> obstacles_;
             std::vector<std::shared_ptr<actor::Zone>> zones_;
             rclcpp::Logger logger_;
         public:
-            Environment(const rclcpp::Node::SharedPtr& node);
+            Environment(const rclcpp::Node::SharedPtr& node, std::shared_ptr<World> world);
             ~Environment();
             // Methods to add/remove obstacles and zones
             void add_obstacle(const std::shared_ptr<actor::Obstacle>& obstacle);
@@ -43,22 +45,10 @@ namespace sim {
             // Method to check in which zones a point is
             std::vector<std::string> get_zones(const geometry_msgs::msg::Point& point) const;
             // Method to set/get the datum
-            void set_datum(const sensor_msgs::msg::NavSatFix& datum) { datum_ = datum; }
-            sensor_msgs::msg::NavSatFix get_datum() const { return datum_; }
         };
         // Environment implementation
-        inline Environment::Environment(const rclcpp::Node::SharedPtr& node)
-            : node_(node), logger_(node->get_logger()) {
-                node_->declare_parameter<std::vector<double>>("datum", {0.0, 0.0, 0.0});
-                node_->get_parameter("datum", datum_param_);
-
-                datum_.header.frame_id = "gps";
-                datum_.latitude = datum_param_[0];
-                datum_.longitude = datum_param_[1];
-                datum_.altitude = datum_param_[2];
-                datum_.position_covariance_type = sensor_msgs::msg::NavSatFix::COVARIANCE_TYPE_UNKNOWN;
-                // RCLCPP_INFO(logger_, "Datum set to: %.6f, %.6f, %.2f", datum_.latitude, datum_.longitude, datum_.altitude);
-            }
+        inline Environment::Environment(const rclcpp::Node::SharedPtr& node, std::shared_ptr<World> world)
+            : world_(world), node_(node), logger_(node->get_logger()) {}
         inline Environment::~Environment() {}
 
         inline void Environment::add_obstacle(const std::shared_ptr<actor::Obstacle>& obstacle) {

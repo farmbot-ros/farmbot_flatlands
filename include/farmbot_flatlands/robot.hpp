@@ -19,10 +19,9 @@
 #include <cmath>
 #include <tuple>
 #include <algorithm> // For std::clamp
-#include <chrono>
 #include <random>
 
-#include "farmbot_flatlands/envi.hpp"
+#include "farmbot_flatlands/world.hpp"
 #include "farmbot_flatlands/plugins/plugin.hpp"
 
 #include "farmbot_flatlands/plugins/gps.hpp"
@@ -38,7 +37,7 @@ namespace sim {
         private:
             //Pointer to the node
             rclcpp::Node::SharedPtr node_;
-            std::shared_ptr<Environment> environment_;
+            std::shared_ptr<World> world_;
             rclcpp::Logger logger_;
 
             std::string name_;
@@ -48,8 +47,9 @@ namespace sim {
             std::shared_ptr<plugins::IMUPlugin> imu_plugin_;
             std::shared_ptr<plugins::GyroPlugin> gyro_plugin_;
             std::shared_ptr<plugins::CompassPlugin> compass_plugin_;
-            // Odometry data
+            // Odometry ad datum
             nav_msgs::msg::Odometry odom_;
+            sensor_msgs::msg::NavSatFix datum_;
             // Velocity Control Variables
             geometry_msgs::msg::Twist current_twist_;
             geometry_msgs::msg::Twist target_twist_;
@@ -57,12 +57,13 @@ namespace sim {
             double max_angular_accel_;  // radians per second squared
 
         public:
-            Robot(const rclcpp::Node::SharedPtr& node, std::shared_ptr<Environment> environment);
+            Robot(const rclcpp::Node::SharedPtr& node, std::shared_ptr<World> world);
             void init(std::string name, nav_msgs::msg::Odometry odom = random_odom(-100, 100));
             void set_twist(const geometry_msgs::msg::Twist& twist);
             void update(double delta_t, const rclcpp::Time & current_time);
-            // Getter for odometry
+            // getters
             nav_msgs::msg::Odometry get_odom() const;
+            sensor_msgs::msg::NavSatFix get_datum() const;
             // Getter for robot's position (x, y, z)
             std::tuple<double, double, double> get_position() const;
             static nav_msgs::msg::Odometry random_odom(int min, int max);
@@ -71,20 +72,19 @@ namespace sim {
     // Implementation of Robot class methods
     inline Robot::Robot(
         const rclcpp::Node::SharedPtr& node,
-        std::shared_ptr<Environment> environment)
-        : node_(node), environment_(environment), logger_(node->get_logger()) {
+        std::shared_ptr<World> world)
+        : node_(node), world_(world), logger_(node->get_logger()) {
         // Initialize odometry message
         odom_.header.frame_id = "world";
         odom_.child_frame_id = "base_link";
 
+        datum_ = world_->settings.get_datum();
         // Initialize current and target velocities to zero
         current_twist_ = geometry_msgs::msg::Twist();
         target_twist_ = geometry_msgs::msg::Twist();
 
         // Get parameters for maximum accelerations
-        // node->declare_parameter<double>("max_linear_accel", 0.7);   // m/s²
         node->get_parameter("max_linear_accel", max_linear_accel_);
-        // node->declare_parameter<double>("max_angular_accel", 0.7);  // rad/s²
         node->get_parameter("max_angular_accel", max_angular_accel_);
     }
 
@@ -93,7 +93,7 @@ namespace sim {
         // Set initial odometry
         odom_ = odom;
         // Create GPS Plugin
-        gps_plugin_ = std::make_shared<plugins::GPSPlugin>(node_, name_ + "/gnss", environment_->get_datum());
+        gps_plugin_ = std::make_shared<plugins::GPSPlugin>(node_, name_ + "/gnss", get_datum());
         // Create IMU Plugin
         imu_plugin_ = std::make_shared<plugins::IMUPlugin>(node_, name_ + "/imu", get_odom());
         // Create Gyro Plugin
@@ -149,17 +149,6 @@ namespace sim {
         proposed_position.y = odom_.pose.pose.position.y + delta_pos.y();
         proposed_position.z = odom_.pose.pose.position.z + delta_pos.z();
 
-        if (environment_->is_collision(proposed_position)) {
-            RCLCPP_WARN(logger_, "Collision detected at position (%f, %f)", proposed_position.x, proposed_position.y);
-            // Handle collision: stop the robot
-            current_twist_.linear.x = 0.0;
-            current_twist_.linear.y = 0.0;
-            current_twist_.linear.z = 0.0;
-            current_twist_.angular.x = 0.0;
-            current_twist_.angular.y = 0.0;
-            current_twist_.angular.z = 0.0;
-            target_twist_ = current_twist_; // Update target to current to prevent further movement
-        } else {
             // No collision, update position
             odom_.pose.pose.position.x = proposed_position.x;
             odom_.pose.pose.position.y = proposed_position.y;
@@ -198,11 +187,14 @@ namespace sim {
             auto compass_future = std::async(std::launch::async, [this, current_time, odom_copy]() {
                 compass_plugin_->tick(current_time, odom_copy);
             });
-        }
     }
 
     inline nav_msgs::msg::Odometry Robot::get_odom() const {
         return odom_;
+    }
+
+    inline sensor_msgs::msg::NavSatFix Robot::get_datum() const {
+        return datum_;
     }
 
     inline std::tuple<double, double, double> Robot::get_position() const {
@@ -226,7 +218,6 @@ namespace sim {
         odom.pose.pose.orientation = tf2::toMsg(tf2::Quaternion(tf2::Vector3(0, 0, 1), dist2(gen)));
         return odom;
     }
-
 } // namespace sim
 
 #endif // ROBOT_HPP
