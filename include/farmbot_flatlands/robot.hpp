@@ -57,6 +57,8 @@ namespace sim {
             // Velocity Control Variables
             geometry_msgs::msg::Twist current_twist_;
             geometry_msgs::msg::Twist target_twist_;
+            double max_linear_vel_ = 1;     // meters per second
+            double max_angular_vel_ = 1;    // radians per second
             double max_linear_accel_;   // meters per second squared
             double max_angular_accel_;  // radians per second squared
             rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr twist_sub_;
@@ -144,27 +146,11 @@ namespace sim {
         });
     }
 
+
     inline void Robot::update_alt(double delta_t, const rclcpp::Time & current_time) {
-        // Calculate required acceleration
-        auto calc_accel = [](double target, double current, double max_accel, double dt) {
-            double accel = (target - current) / dt;
-            return std::clamp(accel, -max_accel, max_accel);
-        };
-
-        // Update linear velocities
-        double accel_x = calc_accel(target_twist_.linear.x, current_twist_.linear.x, max_linear_accel_, delta_t);
-        double accel_y = calc_accel(target_twist_.linear.y, current_twist_.linear.y, max_linear_accel_, delta_t);
-
-        current_twist_.linear.x += accel_x * delta_t;
-        current_twist_.linear.y += accel_y * delta_t;
-
-        // Update angular velocity
-        double angular_accel_z = calc_accel(target_twist_.angular.z, current_twist_.angular.z, max_angular_accel_, delta_t);
-        current_twist_.angular.z += angular_accel_z * delta_t;
-
-        // Update robot physics in Muli
-        robot_->SetLinearVelocity(current_twist_.linear.x, current_twist_.linear.y);
-        robot_->SetAngularVelocity(current_twist_.angular.z);
+        // Treat target_twist_ as acceleration commands
+        robot_->SetLinearVelocity(target_twist_.linear.x, target_twist_.linear.y);
+        robot_->SetAngularVelocity(target_twist_.angular.z);
 
         // Get updated position and rotation from Muli
         auto position = robot_->GetPosition();
@@ -180,9 +166,10 @@ namespace sim {
         q.setRPY(0, 0, rotation.GetAngle()); // Assuming 2D rotation around Z axis
         odom_.pose.pose.orientation = tf2::toMsg(q);
 
-        // Update twist
+        // Update twist in odometry
         odom_.twist.twist = current_twist_;
     }
+
 
     inline void Robot::update_ori(double delta_t, const rclcpp::Time & current_time) {
         // Calculate required acceleration
