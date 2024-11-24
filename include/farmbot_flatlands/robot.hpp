@@ -24,6 +24,7 @@
 #include <random>
 
 #include "farmbot_flatlands/world.hpp"
+#include "farmbot_flatlands/utils/utils.hpp"
 #include "farmbot_flatlands/plugins/plugin.hpp"
 
 #include "farmbot_flatlands/plugins/gps.hpp"
@@ -60,12 +61,13 @@ namespace sim {
             double max_angular_accel_;  // radians per second squared
             rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr twist_sub_;
 
+            void update_alt(double delta_t, const rclcpp::Time & current_time);
+            void update_ori(double delta_t, const rclcpp::Time & current_time);
         public:
             Robot(std::string name, const rclcpp::Node::SharedPtr& node, std::shared_ptr<World> world);
             void init(nav_msgs::msg::Odometry odom = random_odom(-100, 100));
             void set_twist(const geometry_msgs::msg::Twist& twist);
             void update(double delta_t, const rclcpp::Time & current_time);
-            void update_alt(double delta_t, const rclcpp::Time & current_time);
             // getters
             nav_msgs::msg::Odometry get_odom() const;
             sensor_msgs::msg::NavSatFix get_datum() const;
@@ -114,17 +116,75 @@ namespace sim {
         // Add robot to world
         robot_ = world_->add_robot(1.0f, 0.5f, name_);
         robot_->SetPosition(odom_.pose.pose.position.x, odom_.pose.pose.position.y);
+        // theta
+        auto theta = angle::theta(odom_.pose.pose.orientation);
+        robot_->SetRotation(theta);
     }
 
     inline void Robot::set_twist(const geometry_msgs::msg::Twist& twist) {
         target_twist_ = twist;
     }
 
-    inline void Robot::update_alt(double delta_t, const rclcpp::Time & current_time) {
-        // robot_->set(a)
+    inline void Robot::update(double delta_t, const rclcpp::Time & current_time) {
+        update_ori(delta_t, current_time);
+        // update_alt(delta_t, current_time);
+        // Dispatch plugin tick calls asynchronously
+        auto odom_copy = get_odom();
+        auto gps_future = std::async(std::launch::async, [this, current_time, odom_copy]() {
+            gps_plugin_->tick(current_time, odom_copy);
+        });
+        auto imu_future = std::async(std::launch::async, [this, current_time, odom_copy]() {
+            imu_plugin_->tick(current_time, odom_copy);
+        });
+        auto gyro_future = std::async(std::launch::async, [this, current_time, odom_copy]() {
+            gyro_plugin_->tick(current_time, odom_copy);
+        });
+        auto compass_future = std::async(std::launch::async, [this, current_time, odom_copy]() {
+            compass_plugin_->tick(current_time, odom_copy);
+        });
     }
 
-    inline void Robot::update(double delta_t, const rclcpp::Time & current_time) {
+    inline void Robot::update_alt(double delta_t, const rclcpp::Time & current_time) {
+        // Calculate required acceleration
+        auto calc_accel = [](double target, double current, double max_accel, double dt) {
+            double accel = (target - current) / dt;
+            return std::clamp(accel, -max_accel, max_accel);
+        };
+
+        // Update linear velocities
+        double accel_x = calc_accel(target_twist_.linear.x, current_twist_.linear.x, max_linear_accel_, delta_t);
+        double accel_y = calc_accel(target_twist_.linear.y, current_twist_.linear.y, max_linear_accel_, delta_t);
+
+        current_twist_.linear.x += accel_x * delta_t;
+        current_twist_.linear.y += accel_y * delta_t;
+
+        // Update angular velocity
+        double angular_accel_z = calc_accel(target_twist_.angular.z, current_twist_.angular.z, max_angular_accel_, delta_t);
+        current_twist_.angular.z += angular_accel_z * delta_t;
+
+        // Update robot physics in Muli
+        robot_->SetLinearVelocity(current_twist_.linear.x, current_twist_.linear.y);
+        robot_->SetAngularVelocity(current_twist_.angular.z);
+
+        // Get updated position and rotation from Muli
+        auto position = robot_->GetPosition();
+        auto rotation = robot_->GetRotation();
+
+        // Update odometry message
+        odom_.pose.pose.position.x = position.x;
+        odom_.pose.pose.position.y = position.y;
+        odom_.pose.pose.position.z = 0.0; // Assuming 2D simulation
+
+        // Convert rotation to quaternion
+        tf2::Quaternion q;
+        q.setRPY(0, 0, rotation.GetAngle()); // Assuming 2D rotation around Z axis
+        odom_.pose.pose.orientation = tf2::toMsg(q);
+
+        // Update twist
+        odom_.twist.twist = current_twist_;
+    }
+
+    inline void Robot::update_ori(double delta_t, const rclcpp::Time & current_time) {
         // Calculate required acceleration
         auto calc_accel = [](double target, double current, double max_accel, double dt) {
             double accel = (target - current) / dt;
@@ -167,44 +227,28 @@ namespace sim {
         proposed_position.y = odom_.pose.pose.position.y + delta_pos.y();
         proposed_position.z = odom_.pose.pose.position.z + delta_pos.z();
 
-            // No collision, update position
-            odom_.pose.pose.position.x = proposed_position.x;
-            odom_.pose.pose.position.y = proposed_position.y;
-            odom_.pose.pose.position.z = proposed_position.z;
+        // No collision, update position
+        odom_.pose.pose.position.x = proposed_position.x;
+        odom_.pose.pose.position.y = proposed_position.y;
+        odom_.pose.pose.position.z = proposed_position.z;
 
-            // Update orientation
-            tf2::Vector3 angular_vel(current_twist_.angular.x, current_twist_.angular.y, current_twist_.angular.z);
-            double angular_speed = angular_vel.length();
+        // Update orientation
+        tf2::Vector3 angular_vel(current_twist_.angular.x, current_twist_.angular.y, current_twist_.angular.z);
+        double angular_speed = angular_vel.length();
 
-            tf2::Quaternion delta_q;
-            if (angular_speed > 1e-6) {
-                tf2::Vector3 rotation_axis = angular_vel.normalized();
-                double rotation_angle = angular_speed * delta_t;
-                delta_q.setRotation(rotation_axis, rotation_angle);
-            } else {
-                delta_q = tf2::Quaternion(0, 0, 0, 1);
-            }
+        tf2::Quaternion delta_q;
+        if (angular_speed > 1e-6) {
+            tf2::Vector3 rotation_axis = angular_vel.normalized();
+            double rotation_angle = angular_speed * delta_t;
+            delta_q.setRotation(rotation_axis, rotation_angle);
+        } else {
+            delta_q = tf2::Quaternion(0, 0, 0, 1);
+        }
 
-            current_orientation *= delta_q;
-            current_orientation.normalize();
+        current_orientation *= delta_q;
+        current_orientation.normalize();
 
-            odom_.pose.pose.orientation = tf2::toMsg(current_orientation);
-
-            auto odom_copy = get_odom();
-
-            // Dispatch plugin tick calls asynchronously
-            auto gps_future = std::async(std::launch::async, [this, current_time, odom_copy]() {
-                gps_plugin_->tick(current_time, odom_copy);
-            });
-            auto imu_future = std::async(std::launch::async, [this, current_time, odom_copy]() {
-                imu_plugin_->tick(current_time, odom_copy);
-            });
-            auto gyro_future = std::async(std::launch::async, [this, current_time, odom_copy]() {
-                gyro_plugin_->tick(current_time, odom_copy);
-            });
-            auto compass_future = std::async(std::launch::async, [this, current_time, odom_copy]() {
-                compass_plugin_->tick(current_time, odom_copy);
-            });
+        odom_.pose.pose.orientation = tf2::toMsg(current_orientation);
     }
 
     inline nav_msgs::msg::Odometry Robot::get_odom() const {
