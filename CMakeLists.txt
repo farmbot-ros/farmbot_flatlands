@@ -10,6 +10,13 @@ set(CMAKE_CXX_STANDARD_REQUIRED On)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 include(FetchContent)
 
+fetchcontent_declare(
+    muli
+    GIT_REPOSITORY https://github.com/bresilla/Muli
+)
+FetchContent_MakeAvailable(muli)
+include_directories(${muli_SOURCE_DIR}/include)
+
 install(
     DIRECTORY config
     DESTINATION share/${PROJECT_NAME}
@@ -101,6 +108,7 @@ find_package(Qt5Widgets REQUIRED)
 
 
 set(dependencies_sys
+    muli
     fmt::fmt
     ${Boost_LIBRARIES}
     ${PCL_LIBRARIES}
