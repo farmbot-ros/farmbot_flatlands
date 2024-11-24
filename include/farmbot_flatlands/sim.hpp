@@ -183,7 +183,7 @@ namespace sim {
 
         // Compute time difference
         double delta_t = time_increment;
-        world_->Step(time_increment);
+        world_->step(time_increment);
 
         // Update robot state and environment
         for (int i = 0; i < num_robots_; i++){

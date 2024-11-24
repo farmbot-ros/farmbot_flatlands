@@ -1,6 +1,7 @@
 #ifndef ROBOT_HPP
 #define ROBOT_HPP
 
+#include "muli/math.h"
 #include "rclcpp/rclcpp.hpp"
 
 // Message Types
