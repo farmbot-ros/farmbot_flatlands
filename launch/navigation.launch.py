@@ -46,7 +46,7 @@ def launch_setup(context, *args, **kwargs):
     pgk_share_navigation = get_package_share_directory('farmbot_navigation')
     navigation_launch_file = os.path.join(pgk_share_navigation, 'launch', 'navigation.launch.py')
 
-    pkg_share_controller = get_package_share_directory('farmbot_controller')
+    pkg_share_controller = get_package_share_directory('farmbot_drivecore')
     controller_launch_file = os.path.join(pkg_share_controller, 'launch', 'controller.launch.py')
 
     actions = []
