@@ -43,7 +43,7 @@ def generate_launch_description():
 def launch_setup(context, *args, **kwargs):
     num_robots = int(LaunchConfiguration('num_robots').perform(context))
 
-    pkg_share_localization = get_package_share_directory('farmbot_localization')
+    pkg_share_localization = get_package_share_directory('farmbot_polestar')
     localization_launch_file = os.path.join(pkg_share_localization, 'launch', 'localization.launch.py')
 
     actions = []

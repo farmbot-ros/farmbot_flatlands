@@ -43,18 +43,18 @@ def generate_launch_description():
 def launch_setup(context, *args, **kwargs):
     num_robots = int(LaunchConfiguration('num_robots').perform(context))
 
-    pkg_share_planner = get_package_share_directory('farmbot_planner')
-    planner_launch_file = os.path.join(pkg_share_planner, 'launch', 'planner.launch.py')
+    pkg_share_coverage = get_package_share_directory('farmbot_trailblazer')
+    coverage_launch_file = os.path.join(pkg_share_coverage, 'launch', 'coverage.launch.py')
 
     actions = []
 
     for i in range(num_robots):
         namespace = f'robot{i}'
-        # GroupAction to launch the planner.launch.py file under the given namespace
+        # GroupAction to launch the coverage.launch.py file under the given namespace
         robot_launch = GroupAction([
             # PushRosNamespace(namespace),  # Push the namespace for this robot
             IncludeLaunchDescription(
-                PythonLaunchDescriptionSource(planner_launch_file),
+                PythonLaunchDescriptionSource(coverage_launch_file),
                 launch_arguments={
                     'namespace': namespace,
                 }.items() if i != 0 else {

@@ -43,7 +43,7 @@ def generate_launch_description():
 def launch_setup(context, *args, **kwargs):
     num_robots = int(LaunchConfiguration('num_robots').perform(context))
 
-    pgk_share_navigation = get_package_share_directory('farmbot_navigation')
+    pgk_share_navigation = get_package_share_directory('farmbot_pathfinder')
     navigation_launch_file = os.path.join(pgk_share_navigation, 'launch', 'navigation.launch.py')
 
     pkg_share_controller = get_package_share_directory('farmbot_drivecore')
