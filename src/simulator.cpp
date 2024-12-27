@@ -1,5 +1,24 @@
 #include "rclcpp/rclcpp.hpp"
 #include "farmbot_flatlands/sim.hpp"
+#include "farmbot_flatlands/robot.hpp"
+
+#include "ament_index_cpp/get_package_share_directory.hpp"
+namespace aix = ament_index_cpp;
+#include <spdlog/spdlog.h>
+namespace echo = spdlog;
+
+class ConfigParder {
+    private:
+        std::vector <robo::Robot> robots_;
+
+    public:
+        ConfigParder(std::string filename) {
+            std::string pcg = aix::get_package_share_directory("farmbot_raph");
+            std::string path = pcg + "/config/" + filename;
+            echo::info("Reading config file: {}", path);
+        }
+
+};
 
 int main(int argc, char** argv) {
     rclcpp::init(argc, argv);

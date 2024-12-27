@@ -34,6 +34,31 @@
 
 using namespace std::chrono_literals;
 
+namespace robo {
+    struct Location {
+        double latitude;
+        double longitude;
+        double altitude;
+        double heading;
+    };
+
+    struct Sensors {
+        bool gps;
+        bool imu;
+        bool gyro;
+        bool compass;
+    };
+
+    struct Robot {
+        std::string ns;
+        int identifier;
+        std::string uuid;
+        int capability_level;
+        Location location;
+        Sensors sensors;
+    };
+}
+
 namespace sim {
     // Robot class handles odometry and robot state updates
     class Robot {

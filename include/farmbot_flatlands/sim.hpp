@@ -46,6 +46,7 @@ using diag = diagnostic_msgs::msg::DiagnosticStatus;
 using namespace std::chrono_literals;
 using namespace std::placeholders;
 
+
 namespace sim {
     using Trigger = farmbot_interfaces::srv::Trigger;
     using Value = farmbot_interfaces::srv::Value;
