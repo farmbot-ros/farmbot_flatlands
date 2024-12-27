@@ -77,6 +77,7 @@ namespace sim {
                         alt_ref_
                     );
 
+                    //TODO: GPS2ENU should be a universal function from localization package
                     // Update GPS pose
                     fix_.latitude = lat;
                     fix_.longitude = lon;

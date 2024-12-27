@@ -17,6 +17,14 @@ fetchcontent_declare(
 FetchContent_MakeAvailable(muli)
 include_directories(${muli_SOURCE_DIR}/include)
 
+FetchContent_Declare(
+  yaml-cpp
+  GIT_REPOSITORY https://github.com/jbeder/yaml-cpp.git
+  GIT_TAG 0.8.0
+)
+FetchContent_MakeAvailable(yaml-cpp)
+
+
 install(
     DIRECTORY config
     DESTINATION share/${PROJECT_NAME}
@@ -67,6 +75,7 @@ include_directories(
     ${pluginlib_INCLUDE_DIRS}
     ${std_msgs_INCLUDE_DIRS}
     ${nlohmann_json_INCLUDE_DIRS}
+    yaml-cpp::yaml-cpp
 )
 
 set(dependencies_ros

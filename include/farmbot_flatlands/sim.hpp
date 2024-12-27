@@ -23,6 +23,7 @@
 #include <farmbot_interfaces/srv/detail/value__struct.hpp>
 #include <rclcpp/timer.hpp>
 #include <tf2/LinearMath/Matrix3x3.h>
+#include <vector>
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
 
 // ROS Diagnostics
@@ -61,7 +62,6 @@ namespace sim {
 
             // Parameters
             double simulation_speed_;
-            std::vector<double> datum_param_;
             bool paused_ = true;
             double publish_rate_;
 
@@ -81,14 +81,14 @@ namespace sim {
             diagnostic_msgs::msg::DiagnosticStatus status;
             rclcpp::TimerBase::SharedPtr diagnostic_timer_;
             // Vector of robots
-            int num_robots_;
+            std::vector<robo::RobotConfig> robotz_;
             std::vector<std::shared_ptr<Robot>> robots_;
             // Environment instance
             std::shared_ptr<Environment> env_;
             // Seed for random number generator
 
         public:
-            SIM(const rclcpp::Node::SharedPtr &node);
+            SIM(const rclcpp::Node::SharedPtr &node, std::vector<robo::RobotConfig> robotz);
             ~SIM();
             void start_simulation();
             void create_world();
@@ -104,45 +104,38 @@ namespace sim {
     };
 
     // Implementation of SIM class methods
+    inline SIM::SIM(const rclcpp::Node::SharedPtr &node, std::vector<robo::RobotConfig> robotz)
+    : node(node), updater_(node), robotz_(robotz) {
+    // Declare and get parameters
+        node->declare_parameter<double>("publish_rate", 10.0);
+        node->get_parameter("publish_rate", publish_rate_);
 
-    // inline SIM::SIM(const rclcpp::NodeOptions & options) : Node("simulator", options), updater_(this){
-        // Declare and get parameters
-        inline SIM::SIM(const rclcpp::Node::SharedPtr &node) : node(node), updater_(node) {
-            node->declare_parameter<double>("publish_rate", 10.0);
-            node->get_parameter("publish_rate", publish_rate_);
-            node->declare_parameter<std::vector<double>>("datum", {0.0, 0.0, 0.0});
-            node->get_parameter("datum", datum_param_);
-            node->declare_parameter<int>("num_robots", 1);
-            node->get_parameter("num_robots", num_robots_);
-            node->declare_parameter<double>("max_angular_accel", 0.7);  // rad/s²
-            node->declare_parameter<double>("max_linear_accel", 0.7);   // m/s²
+        node->declare_parameter<double>("simulation_speed", 1.0);
+        node->get_parameter("simulation_speed", simulation_speed_);
 
-            // Diagnostic
-            status.level = diagnostic_msgs::msg::DiagnosticStatus::WARN;
-            status.message = "Not initialized";
+        // Diagnostic
+        status.level = diagnostic_msgs::msg::DiagnosticStatus::WARN;
+        status.message = "Not initialized";
 
-            // Initialize simulated time
-            simulated_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
-            last_update_ = simulated_time_;
+        // Initialize simulated time
+        simulated_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
+        last_update_ = simulated_time_;
 
-            // Play / Pause Service
-            pause_service_ = node->create_service<Trigger>("/sim/pause", std::bind(&SIM::pause_callback, this, _1, _2));
-            set_speed_service_ = node->create_service<Value>("/sim/speed", std::bind(&SIM::speed_callback, this, _1, _2));
+        // Play / Pause Service
+        pause_service_ = node->create_service<Trigger>("/sim/pause", std::bind(&SIM::pause_callback, this, _1, _2));
+        set_speed_service_ = node->create_service<Value>("/sim/speed", std::bind(&SIM::speed_callback, this, _1, _2));
 
-            // Publisher for simulated clock
-            clock_pub_ = node->create_publisher<rosgraph_msgs::msg::Clock>("/clock", 10);
+        // Publisher for simulated clock
+        clock_pub_ = node->create_publisher<rosgraph_msgs::msg::Clock>("/clock", 10);
 
-            // Initialize maximum accelerations (tunable parameters)
-            node->declare_parameter<double>("simulation_speed", 1.0);
-            node->get_parameter("simulation_speed", simulation_speed_);
 
-            // Diagnostics
-            updater_.setHardwareID(static_cast<std::string>(node->get_namespace()) + "/sim");
-            updater_.add("Navigation Status", std::bind(&SIM::check_system, this, std::placeholders::_1));
-            diagnostic_timer_ = node->create_wall_timer(1s, std::bind(&SIM::diagnostic_callback, this));
+        // Diagnostics
+        updater_.setHardwareID(static_cast<std::string>(node->get_namespace()) + "/sim");
+        updater_.add("Navigation Status", std::bind(&SIM::check_system, this, std::placeholders::_1));
+        diagnostic_timer_ = node->create_wall_timer(1s, std::bind(&SIM::diagnostic_callback, this));
 
-            RCLCPP_INFO(node->get_logger(), "SIM initialized.");
-        }
+        RCLCPP_INFO(node->get_logger(), "SIM initialized.");
+    }
 
     inline SIM::~SIM(){
         if (loop_timer_) { loop_timer_->cancel(); }
@@ -151,16 +144,21 @@ namespace sim {
 
     inline void SIM::create_world(){
         world_settings_.apply_gravity = false;
-        world_settings_.set_datum(datum_param_);
+        std::vector<double> datum = {
+            robotz_[0].datum.latitude,
+            robotz_[0].datum.longitude,
+            robotz_[0].datum.altitude
+        };
+        world_settings_.set_datum(datum);
         world_ = std::make_shared<World>(world_settings_, node->shared_from_this());
     }
 
     inline void SIM::start_simulation(){
         env_ = std::make_shared<Environment>(node->shared_from_this(), world_);
-        for (int i = 0; i < num_robots_; i++){
+        for (uint i = 0; i < robotz_.size(); i++){
             std::string robot_name = "robot" + std::to_string(i);
             robots_.push_back(std::make_shared<Robot>(robot_name, node->shared_from_this(), world_));
-            robots_[i]->init();
+            robots_[i]->init(robotz_[i]);
         }
         // Start the simulator
         loop_timer_ = node->create_wall_timer(std::chrono::duration<double>(1.0 / publish_rate_), std::bind(&SIM::update_loop, this));
@@ -189,7 +187,7 @@ namespace sim {
         world_->step(time_increment);
 
         // Update robot state and environment
-        for (int i = 0; i < num_robots_; i++){
+        for (uint i = 0; i < robots_.size(); i++){
             robots_[i]->update(delta_t, simulated_time_);
         }
         env_->update(delta_t, simulated_time_);

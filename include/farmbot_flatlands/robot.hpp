@@ -9,14 +9,17 @@
 #include "geometry_msgs/msg/twist.hpp"
 #include "nav_msgs/msg/odometry.hpp"
 #include "sensor_msgs/msg/nav_sat_fix.hpp"
+#include "std_msgs/msg/int8.hpp"
 
 // TF2 Headers
 #include "tf2/LinearMath/Quaternion.h"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
 
 // Standard Libraries
+#include <cstdint>
 #include <memory>
 #include <sensor_msgs/msg/detail/nav_sat_fix__struct.hpp>
+#include <std_msgs/msg/detail/int8__struct.hpp>
 #include <string>
 #include <cmath>
 #include <tuple>
@@ -28,10 +31,13 @@
 #include "farmbot_flatlands/plugins/plugin.hpp"
 
 #include "farmbot_flatlands/plugins/gps.hpp"
+#include "farmbot_flatlands/plugins/wheel.hpp"
 #include "farmbot_flatlands/plugins/imu.hpp"
 #include "farmbot_flatlands/plugins/gyro.hpp"
 #include "farmbot_flatlands/plugins/compass.hpp"
 
+#include <spdlog/spdlog.h>
+namespace echo = spdlog;
 using namespace std::chrono_literals;
 
 namespace robo {
@@ -42,6 +48,13 @@ namespace robo {
         double heading;
     };
 
+    struct Pose {
+        double x;
+        double y;
+        double z;
+        double t;
+    };
+
     struct Sensors {
         bool gps;
         bool imu;
@@ -49,14 +62,57 @@ namespace robo {
         bool compass;
     };
 
-    struct Robot {
+    struct RobotConfig {
+        Pose pose;
+        Location datum;
         std::string ns;
         int identifier;
         std::string uuid;
-        int capability_level;
-        Location location;
+        int8_t rci;
         Sensors sensors;
     };
+
+    // Helper function to convert Sensors to string
+    inline std::string sensors_to_string(const Sensors& sensors) {
+        std::ostringstream oss;
+        oss << "GPS: " << (sensors.gps ? "Enabled" : "Disabled") << ", "
+            << "IMU: " << (sensors.imu ? "Enabled" : "Disabled") << ", "
+            << "Gyro: " << (sensors.gyro ? "Enabled" : "Disabled") << ", "
+            << "Compass: " << (sensors.compass ? "Enabled" : "Disabled");
+        return oss.str();
+    }
+
+    // Helper function to convert Location to string
+    inline std::string location_to_string(const Location& location) {
+        std::ostringstream oss;
+        oss << "Latitude: " << location.latitude << ", "
+            << "Longitude: " << location.longitude << ", "
+            << "Altitude: " << location.altitude << ", "
+            << "Heading: " << location.heading;
+        return oss.str();
+    }
+
+    inline std::string pose_to_string(const Pose& pose) {
+        std::ostringstream oss;
+        oss << "X: " << pose.x << ", "
+            << "Y: " << pose.y << ", "
+            << "Z: " << pose.z << ", "
+            << "T: " << pose.t;
+        return oss.str();
+    }
+
+    // Main to_string function for Robot
+    inline std::string to_string(const RobotConfig& robot) {
+        std::ostringstream oss;
+        oss << "Namespace: " << robot.ns << "\n"
+            << "Identifier: " << robot.identifier << "\n"
+            << "UUID: " << robot.uuid << "\n"
+            << "Capability Level: " << robot.rci << "\n"
+            << "Location: {" << pose_to_string(robot.pose) << "}\n"
+            << "Sensors: {" << sensors_to_string(robot.sensors) << "}"
+            << "Datum: {" << location_to_string(robot.datum) << "}";
+        return oss.str();
+    }
 }
 
 namespace sim {
@@ -68,11 +124,11 @@ namespace sim {
             std::shared_ptr<World> world_;
             muli::RigidBody* robot_;
             rclcpp::Logger logger_;
-
             std::string name_;
-
+            std_msgs::msg::Int8 rci_;
             // Plugins
             std::shared_ptr<plugins::GPSPlugin> gps_plugin_;
+            std::shared_ptr<plugins::WheelPlugin> wheel_plugin_;
             std::shared_ptr<plugins::IMUPlugin> imu_plugin_;
             std::shared_ptr<plugins::GyroPlugin> gyro_plugin_;
             std::shared_ptr<plugins::CompassPlugin> compass_plugin_;
@@ -82,17 +138,20 @@ namespace sim {
             // Velocity Control Variables
             geometry_msgs::msg::Twist current_twist_;
             geometry_msgs::msg::Twist target_twist_;
+
+            rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr twist_sub_;
+            rclcpp::Publisher<std_msgs::msg::Int8>::SharedPtr rci_level_pub_;
+
             double max_linear_vel_ = 1;     // meters per second
             double max_angular_vel_ = 1;    // radians per second
-            double max_linear_accel_;   // meters per second squared
-            double max_angular_accel_;  // radians per second squared
-            rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr twist_sub_;
+            double max_linear_accel_ = 1;   // meters per second squared
+            double max_angular_accel_ = 1;  // radians per second squared
 
-            void update_alt(double delta_t, const rclcpp::Time & current_time);
-            void update_ori(double delta_t, const rclcpp::Time & current_time);
+
         public:
             Robot(std::string name, const rclcpp::Node::SharedPtr& node, std::shared_ptr<World> world);
-            void init(nav_msgs::msg::Odometry odom = random_odom(-100, 100));
+            void init(const robo::RobotConfig& config);
+
             void set_twist(const geometry_msgs::msg::Twist& twist);
             void update(double delta_t, const rclcpp::Time & current_time);
             // getters
@@ -100,7 +159,8 @@ namespace sim {
             sensor_msgs::msg::NavSatFix get_datum() const;
             // Getter for robot's position (x, y, z)
             std::tuple<double, double, double> get_position() const;
-            static nav_msgs::msg::Odometry random_odom(int min, int max);
+            void update_alt(double delta_t, const rclcpp::Time & current_time);
+            void update_ori(double delta_t, const rclcpp::Time & current_time);
     };
 
     // Implementation of Robot class methods
@@ -115,6 +175,9 @@ namespace sim {
         {
         twist_sub_ = node->create_subscription<geometry_msgs::msg::Twist>(
             name_ + "/cmd_vel", 10, std::bind(&Robot::set_twist, this, std::placeholders::_1));
+
+        rci_level_pub_ = node->create_publisher<std_msgs::msg::Int8>(name_ + "/rci", 10);
+
         // Initialize odometry message
         odom_.header.frame_id = "world";
         odom_.child_frame_id = "base_link";
@@ -123,16 +186,17 @@ namespace sim {
         // Initialize current and target velocities to zero
         current_twist_ = geometry_msgs::msg::Twist();
         target_twist_ = geometry_msgs::msg::Twist();
-
-        // Get parameters for maximum accelerations
-        node->get_parameter("max_linear_accel", max_linear_accel_);
-        node->get_parameter("max_angular_accel", max_angular_accel_);
     }
 
-    inline void Robot::init(nav_msgs::msg::Odometry odom) {
-        odom_ = odom;
+    inline void Robot::init(const robo::RobotConfig& config) {
+        // Initialize current and target velocities to zero
+        current_twist_ = geometry_msgs::msg::Twist();
+        target_twist_ = geometry_msgs::msg::Twist();
+
         // Create GPS Plugin
         gps_plugin_ = std::make_shared<plugins::GPSPlugin>(node_, name_ + "/gnss", get_datum());
+        // Create Wheel Plugin
+        wheel_plugin_ = std::make_shared<plugins::WheelPlugin>(node_, name_ + "/wheel", get_odom());
         // Create IMU Plugin
         imu_plugin_ = std::make_shared<plugins::IMUPlugin>(node_, name_ + "/imu", get_odom());
         // Create Gyro Plugin
@@ -142,23 +206,33 @@ namespace sim {
 
         // Add robot to world
         robot_ = world_->add_robot(1.0f, 0.5f, name_);
-        robot_->SetPosition(odom_.pose.pose.position.x, odom_.pose.pose.position.y);
+        echo::info("Configs: {}", robo::to_string(config));
+        robot_->SetPosition(config.pose.x, config.pose.y);
         // theta
         auto theta = angle::theta(odom_.pose.pose.orientation);
         robot_->SetRotation(theta);
-    }
 
-    inline void Robot::set_twist(const geometry_msgs::msg::Twist& twist) {
-        target_twist_ = twist;
+        // Set RCI Level
+        rci_.data = config.rci;
+
+        odom_.pose.pose.position.x = config.pose.x;
+        odom_.pose.pose.position.y = config.pose.y;
+        odom_.pose.pose.position.z = config.pose.z;
+        //theta (in degrees) to quaternion
+        tf2::Quaternion q;
+        q.setRPY(0, 0, config.pose.t);
+        odom_.pose.pose.orientation = tf2::toMsg(q);
     }
 
     inline void Robot::update(double delta_t, const rclcpp::Time & current_time) {
         update_ori(delta_t, current_time);
-        // update_alt(delta_t, current_time);
-        // Dispatch plugin tick calls asynchronously
         auto odom_copy = get_odom();
+
         auto gps_future = std::async(std::launch::async, [this, current_time, odom_copy]() {
             gps_plugin_->tick(current_time, odom_copy);
+        });
+        auto wheel_future = std::async(std::launch::async, [this, current_time, odom_copy]() {
+            wheel_plugin_->tick(current_time, odom_copy);
         });
         auto imu_future = std::async(std::launch::async, [this, current_time, odom_copy]() {
             imu_plugin_->tick(current_time, odom_copy);
@@ -169,6 +243,8 @@ namespace sim {
         auto compass_future = std::async(std::launch::async, [this, current_time, odom_copy]() {
             compass_plugin_->tick(current_time, odom_copy);
         });
+
+        rci_level_pub_->publish(rci_);
     }
 
 
@@ -263,6 +339,10 @@ namespace sim {
         odom_.pose.pose.orientation = tf2::toMsg(current_orientation);
     }
 
+    inline void Robot::set_twist(const geometry_msgs::msg::Twist& twist) {
+        target_twist_ = twist;
+    }
+
     inline nav_msgs::msg::Odometry Robot::get_odom() const {
         return odom_;
     }
@@ -279,19 +359,6 @@ namespace sim {
         );
     }
 
-    inline nav_msgs::msg::Odometry Robot::random_odom(int min=100, int max=200){
-        std::random_device rd_;
-        std::mt19937 gen(rd_());
-        std::uniform_int_distribution<int> dist(min, max);
-        nav_msgs::msg::Odometry odom;
-        odom.pose.pose.position.x = dist(gen)*1.0;
-        odom.pose.pose.position.y = dist(gen)*1.0;
-        odom.pose.pose.position.z = 0.0;
-        // random orientation
-        std::uniform_real_distribution<double> dist2(-M_PI, M_PI);
-        odom.pose.pose.orientation = tf2::toMsg(tf2::Quaternion(tf2::Vector3(0, 0, 1), dist2(gen)));
-        return odom;
-    }
 } // namespace sim
 
 #endif // ROBOT_HPP

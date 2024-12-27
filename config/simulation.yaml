@@ -1,29 +1,38 @@
 global:
     ros__parameters:
         # [latitude, longitude, altitude]
-        # datum: [51.937587, 5.705458, 53.801823] # Randwijck
         datum: [51.987305, 5.663625, 53.801823] # Wageningen
-        max_distance: 20.0
-        min_distance: 10.0
-        num_robots: 3
-
-        # or use the following to specify the initial poses of the robots
         robots:
             - namespace: robot0
-              initial_pose:
-                  latitude: 51.93778674075392
-                  longitude: 5.70576672207017
-                  altitude: 53.80182320303043
-                  heading: 45.0
+              info:
+                  uuid: "ee3d7f2f-a9db-4557-87fc-6bb1c6895e8e"
+                  capability_index: 2
             - namespace: robot1
-              initial_pose:
-                  latitude: 51.93724974075392
-                  longitude: 5.70526372207017
-                  altitude: 53.80182320303043
-                  heading: 135.0
+              info:
+                  uuid: "cd6337ac-4670-49eb-9b45-39e1a27b7893"
+                  capability_index: 2
             - namespace: robot2
-              initial_pose:
-                  latitude: 51.93704974075392
-                  longitude: 5.70506372207017
-                  altitude: 53.80182320303043
-                  heading: 135.0
+              info:
+                  uuid: "fb5a6e1c-cdd5-4bfa-bf2f-7c703489eb8d"
+                  capability_index: 2
+            - namespace: robot3
+              info:
+                  uuid: "045b24cf-1e99-4a3b-b8a9-25e1c0176966"
+                  capability_index: 2
+              location:
+                  pose: [20, 50, 0]
+                  heading: 45.0
+            - namespace: robot4
+              info:
+                  uuid: "0418dffd-ce04-4638-af09-6a06545abd0e"
+                  capability_index: 2
+              location:
+                  heading: 45.0
+                  gnss: [51.987405, 5.663525, 53.801823]
+            - namespace: robot5
+              info:
+                  uuid: "3e814961-1247-418f-8c9b-e03e25587b35"
+                  capability_index: 2
+              location:
+                  pose: [30, 40]
+                  heading: 45.0
