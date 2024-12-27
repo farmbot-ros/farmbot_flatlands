@@ -52,8 +52,9 @@ namespace sim {
     using Value = farmbot_interfaces::srv::Value;
 
     // SIM class manages simulation time and uses Robot class for robot state
-    class SIM : public rclcpp::Node {
+    class SIM {
         private:
+            rclcpp::Node::SharedPtr node;
             //muli world
             WorldSettings world_settings_;
             std::shared_ptr<World> world_;
@@ -87,7 +88,7 @@ namespace sim {
             // Seed for random number generator
 
         public:
-            SIM(const rclcpp::NodeOptions & options = rclcpp::NodeOptions());
+            SIM(const rclcpp::Node::SharedPtr &node);
             ~SIM();
             void start_simulation();
             void create_world();
@@ -104,64 +105,65 @@ namespace sim {
 
     // Implementation of SIM class methods
 
-    inline SIM::SIM(const rclcpp::NodeOptions & options) : Node("simulator", options), updater_(this){
+    // inline SIM::SIM(const rclcpp::NodeOptions & options) : Node("simulator", options), updater_(this){
         // Declare and get parameters
-        this->declare_parameter<double>("publish_rate", 10.0);
-        this->get_parameter("publish_rate", publish_rate_);
-        this->declare_parameter<std::vector<double>>("datum", {0.0, 0.0, 0.0});
-        this->get_parameter("datum", datum_param_);
-        this->declare_parameter<int>("num_robots", 1);
-        this->get_parameter("num_robots", num_robots_);
-        this->declare_parameter<double>("max_angular_accel", 0.7);  // rad/s²
-        this->declare_parameter<double>("max_linear_accel", 0.7);   // m/s²
+        inline SIM::SIM(const rclcpp::Node::SharedPtr &node) : node(node), updater_(node) {
+            node->declare_parameter<double>("publish_rate", 10.0);
+            node->get_parameter("publish_rate", publish_rate_);
+            node->declare_parameter<std::vector<double>>("datum", {0.0, 0.0, 0.0});
+            node->get_parameter("datum", datum_param_);
+            node->declare_parameter<int>("num_robots", 1);
+            node->get_parameter("num_robots", num_robots_);
+            node->declare_parameter<double>("max_angular_accel", 0.7);  // rad/s²
+            node->declare_parameter<double>("max_linear_accel", 0.7);   // m/s²
 
-        // Diagnostic
-        status.level = diagnostic_msgs::msg::DiagnosticStatus::WARN;
-        status.message = "Not initialized";
+            // Diagnostic
+            status.level = diagnostic_msgs::msg::DiagnosticStatus::WARN;
+            status.message = "Not initialized";
 
-        // Initialize simulated time
-        simulated_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
-        last_update_ = simulated_time_;
+            // Initialize simulated time
+            simulated_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
+            last_update_ = simulated_time_;
 
-        // Play / Pause Service
-        pause_service_ = this->create_service<Trigger>("/sim/pause", std::bind(&SIM::pause_callback, this, _1, _2));
-        set_speed_service_ = this->create_service<Value>("/sim/speed", std::bind(&SIM::speed_callback, this, _1, _2));
+            // Play / Pause Service
+            pause_service_ = node->create_service<Trigger>("/sim/pause", std::bind(&SIM::pause_callback, this, _1, _2));
+            set_speed_service_ = node->create_service<Value>("/sim/speed", std::bind(&SIM::speed_callback, this, _1, _2));
 
-        // Publisher for simulated clock
-        clock_pub_ = this->create_publisher<rosgraph_msgs::msg::Clock>("/clock", 10);
+            // Publisher for simulated clock
+            clock_pub_ = node->create_publisher<rosgraph_msgs::msg::Clock>("/clock", 10);
 
-        // Initialize maximum accelerations (tunable parameters)
-        this->declare_parameter<double>("simulation_speed", 1.0);
-        this->get_parameter("simulation_speed", simulation_speed_);
+            // Initialize maximum accelerations (tunable parameters)
+            node->declare_parameter<double>("simulation_speed", 1.0);
+            node->get_parameter("simulation_speed", simulation_speed_);
 
-        // Diagnostics
-        updater_.setHardwareID(static_cast<std::string>(this->get_namespace()) + "/sim");
-        updater_.add("Navigation Status", this, &SIM::check_system);
-        diagnostic_timer_ = this->create_wall_timer(1s, std::bind(&SIM::diagnostic_callback, this));
+            // Diagnostics
+            updater_.setHardwareID(static_cast<std::string>(node->get_namespace()) + "/sim");
+            updater_.add("Navigation Status", std::bind(&SIM::check_system, this, std::placeholders::_1));
+            diagnostic_timer_ = node->create_wall_timer(1s, std::bind(&SIM::diagnostic_callback, this));
 
-        RCLCPP_INFO(this->get_logger(), "SIM initialized.");
-    }
+            RCLCPP_INFO(node->get_logger(), "SIM initialized.");
+        }
 
     inline SIM::~SIM(){
         if (loop_timer_) { loop_timer_->cancel(); }
-        RCLCPP_INFO(this->get_logger(), "Simulator stopped.");
+        RCLCPP_INFO(node->get_logger(), "Simulator stopped.");
     }
 
     inline void SIM::create_world(){
         world_settings_.apply_gravity = false;
         world_settings_.set_datum(datum_param_);
-        world_ = std::make_shared<World>(world_settings_, this->shared_from_this());
+        world_ = std::make_shared<World>(world_settings_, node->shared_from_this());
     }
 
     inline void SIM::start_simulation(){
-        env_ = std::make_shared<Environment>(this->shared_from_this(), world_);
+        env_ = std::make_shared<Environment>(node->shared_from_this(), world_);
         for (int i = 0; i < num_robots_; i++){
             std::string robot_name = "robot" + std::to_string(i);
-            robots_.push_back(std::make_shared<Robot>(robot_name, this->shared_from_this(), world_));
+            robots_.push_back(std::make_shared<Robot>(robot_name, node->shared_from_this(), world_));
             robots_[i]->init();
         }
         // Start the simulator
-        loop_timer_ = this->create_wall_timer(std::chrono::duration<double>(1.0 / publish_rate_), std::bind(&SIM::update_loop, this));
+        loop_timer_ = node->create_wall_timer(std::chrono::duration<double>(1.0 / publish_rate_), std::bind(&SIM::update_loop, this));
         paused_ = false;
     }
 
