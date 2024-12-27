@@ -68,7 +68,7 @@ namespace robo {
         std::string ns;
         int identifier;
         std::string uuid;
-        int8_t rci;
+        int rci;
         Sensors sensors;
     };
 

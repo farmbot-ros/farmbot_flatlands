@@ -6,33 +6,33 @@ global:
             - namespace: robot0
               info:
                   uuid: "ee3d7f2f-a9db-4557-87fc-6bb1c6895e8e"
-                  capability_index: 2
+                  rci: 2
             - namespace: robot1
               info:
                   uuid: "cd6337ac-4670-49eb-9b45-39e1a27b7893"
-                  capability_index: 2
+                  rci: 2
             - namespace: robot2
               info:
                   uuid: "fb5a6e1c-cdd5-4bfa-bf2f-7c703489eb8d"
-                  capability_index: 2
+                  rci: 2
             - namespace: robot3
               info:
                   uuid: "045b24cf-1e99-4a3b-b8a9-25e1c0176966"
-                  capability_index: 2
+                  rci: 2
               location:
                   pose: [20, 50, 0]
                   heading: 45.0
             - namespace: robot4
               info:
                   uuid: "0418dffd-ce04-4638-af09-6a06545abd0e"
-                  capability_index: 2
+                  rci: 2
               location:
                   heading: 45.0
                   gnss: [51.987405, 5.663525, 53.801823]
             - namespace: robot5
               info:
                   uuid: "3e814961-1247-418f-8c9b-e03e25587b35"
-                  capability_index: 2
+                  rci: 2
               location:
                   pose: [30, 40]
                   heading: 45.0

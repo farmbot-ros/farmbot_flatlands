@@ -94,7 +94,7 @@ public:
 
             try {
                 robot.uuid = robot_yaml["info"]["uuid"].as<std::string>();
-                robot.rci = robot_yaml["info"]["rci"].as<int8_t>();
+                robot.rci = robot_yaml["info"]["rci"].as<int>();
             } catch (YAML::TypedBadConversion<std::string>& e) {
                 echo::error("Robot info not found in config file. Exiting.");
             }
