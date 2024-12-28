@@ -10,6 +10,7 @@
 #include "nav_msgs/msg/odometry.hpp"
 #include "sensor_msgs/msg/nav_sat_fix.hpp"
 #include "std_msgs/msg/int8.hpp"
+#include "std_msgs/msg/string.hpp"
 
 // TF2 Headers
 #include "tf2/LinearMath/Quaternion.h"
@@ -206,7 +207,7 @@ namespace sim {
 
         // Add robot to world
         robot_ = world_->add_robot(1.0f, 0.5f, name_);
-        echo::info("Configs: {}", robo::to_string(config));
+        // echo::info("Configs: {}", robo::to_string(config));
         robot_->SetPosition(config.pose.x, config.pose.y);
         // theta
         auto theta = angle::theta(odom_.pose.pose.orientation);
@@ -222,6 +223,7 @@ namespace sim {
         tf2::Quaternion q;
         q.setRPY(0, 0, config.pose.t);
         odom_.pose.pose.orientation = tf2::toMsg(q);
+        echo::info("  --->>>  Robot [{}] initialized, at position: ({}, {}, {})", name_, config.pose.x, config.pose.y, config.pose.z);
     }
 
     inline void Robot::update(double delta_t, const rclcpp::Time & current_time) {

@@ -18,21 +18,30 @@ namespace echo = spdlog;
 class ConfigParser {
 private:
     std::vector<robo::RobotConfig> robots_;
+    rclcpp::Node::SharedPtr node;
 
 public:
-    ConfigParser(const std::string& filename) {
+    ConfigParser(const std::string& filename, rclcpp::Node::SharedPtr node = nullptr) : node(node) {
         std::string pcg = aix::get_package_share_directory("farmbot_flatlands");
         std::string path = pcg + "/config/" + filename;
         echo::info("Reading config file: {}", path);
+        int num_robots_yaml = 1;
 
         // Parse YAML file
         YAML::Node config = YAML::LoadFile(path);
+        try {
+            num_robots_yaml = config["global"]["ros__parameters"]["num_robots"].as<int>();
+        } catch (...) {
+            num_robots_yaml = 1;
+        }
 
-        // Extract robots from YAML
-        // datum: [51.987305, 5.663625, 53.801823] # Wageningen
+        int num_robots = node->get_parameter_or<int>("num_robots", num_robots_yaml);
+
         const auto& datum = config["global"]["ros__parameters"]["datum"];
         const auto& robots_config = config["global"]["ros__parameters"]["robots"];
-        for (std::size_t i = 0; i < robots_config.size(); ++i) {
+
+        // Parse configured robots
+        for (std::size_t i = 0; i < robots_config.size() && i < num_robots; ++i) {
             const auto& robot_yaml = robots_config[i];
 
             robo::RobotConfig robot;
@@ -47,7 +56,7 @@ public:
                 robot.datum.altitude = datum[2].as<double>();
                 robot.datum.latitude = datum[0].as<double>();
                 robot.datum.longitude = datum[1].as<double>();
-            } catch (YAML::TypedBadConversion<double>& e) {
+            } catch (...) {
                 echo::error("Datum not found in config file. Exiting.");
             }
 
@@ -76,7 +85,6 @@ public:
                         robot.pose.z = 0;
                     }
                 } catch (...) {
-                    echo::warn("Robot initial pose not found in config file. Using random GPS coordinates.");
                     auto pose = random_odom(20, 50);
                     robot.pose.x = std::get<0>(pose);
                     robot.pose.y = std::get<1>(pose);
@@ -88,28 +96,60 @@ public:
             try {
                 robot.pose.t = robot_yaml["location"]["heading"].as<double>();
             } catch (...) {
-                echo::warn("Robot initial heading not found in config file. Using random value.");
                 robot.pose.t = rand() % 360;
             }
 
             try {
                 robot.uuid = robot_yaml["info"]["uuid"].as<std::string>();
                 robot.rci = robot_yaml["info"]["rci"].as<int>();
-            } catch (YAML::TypedBadConversion<std::string>& e) {
+            } catch (...) {
                 echo::error("Robot info not found in config file. Exiting.");
             }
 
-            // Sensors are hardcoded for now (customize as needed)
             robot.sensors = {true, true, true, true};
-
-            // echo::info("Robot: {}", robo::to_string(robot));
-            // Add the robot to the vector
             robots_.push_back(robot);
+        }
+
+        // Add random robots if needed
+        while (robots_.size() < num_robots) {
+            auto datum_tuple = std::make_tuple(
+                datum[0].as<double>(),
+                datum[1].as<double>(),
+                datum[2].as<double>()
+            );
+            robots_.push_back(generate_random_robot(datum_tuple));
         }
     }
 
     std::vector<robo::RobotConfig> get_robots() {
         return robots_;
+    }
+
+    robo::RobotConfig generate_random_robot(std::tuple<double, double, double> datum) {
+        robo::RobotConfig robot;
+        robot.ns = "random_robot_" + std::to_string(rand() % 1000);
+
+        // Set datum
+        robot.datum.latitude = std::get<0>(datum);
+        robot.datum.longitude = std::get<1>(datum);
+        robot.datum.altitude = std::get<2>(datum);
+
+        // Generate random pose
+        auto pose = random_odom(20, 50);
+        robot.pose.x = std::get<0>(pose);
+        robot.pose.y = std::get<1>(pose);
+        robot.pose.z = std::get<2>(pose);
+        robot.pose.t = rand() % 360;
+
+        // Generate random UUID and RCI
+        robot.uuid = "UUID_" + std::to_string(rand() % 10000);
+        robot.rci = rand() % 4 + 1 + rand() %3;
+
+        // Default sensors
+        // robot.sensors = {(rand() % 2) == 1, (rand() % 2) == 1, (rand() % 2) == 1, (rand() % 2) == 1};
+        robot.sensors = {true, true, true, true};
+
+        return robot;
     }
 
     //TODO: GPS2ENU should be a universal function from localization package
@@ -161,27 +201,28 @@ public:
         auto z = 0.0;
         return std::make_tuple(x, y, z);
     }
-
 };
-
 
 int main(int argc, char** argv) {
     rclcpp::init(argc, argv);
+    rclcpp::executors::MultiThreadedExecutor executor(rclcpp::ExecutorOptions(), 4);
 
-    auto parser = ConfigParser("simulation.yaml");
+    rclcpp::NodeOptions options_0;
+    options_0.allow_undeclared_parameters(true);
+    options_0.automatically_declare_parameters_from_overrides(true);
+    auto node_0 = rclcpp::Node::make_shared("parser", options_0);
+    auto parser = ConfigParser("simulation.yaml", node_0);
     auto robots = parser.get_robots();
+    executor.add_node(node_0);
 
-    rclcpp::NodeOptions options;
-    options.parameter_overrides({{"use_sim_time", true}});
-    auto node = rclcpp::Node::make_shared("farmbot_flatlands", options);
-
-
-    auto simulator = std::make_shared<sim::SIM>(node, robots);
+    rclcpp::NodeOptions options_1;
+    options_1.parameter_overrides({{"use_sim_time", true}});
+    auto node_1 = rclcpp::Node::make_shared("simulatior", options_1);
+    auto simulator = std::make_shared<sim::SIM>(node_1, robots);
     simulator->create_world();
     simulator->start_simulation();
+    executor.add_node(node_1);
 
-    rclcpp::executors::MultiThreadedExecutor executor(rclcpp::ExecutorOptions(), 4);
-    executor.add_node(node);
     executor.spin();
     rclcpp::shutdown();
     return 0;

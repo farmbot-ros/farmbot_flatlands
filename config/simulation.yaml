@@ -2,6 +2,7 @@ global:
     ros__parameters:
         # [latitude, longitude, altitude]
         datum: [51.987305, 5.663625, 53.801823] # Wageningen
+        num_robots: 6
         robots:
             - namespace: robot0
               info:

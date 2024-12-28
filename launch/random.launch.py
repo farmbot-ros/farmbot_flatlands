@@ -38,11 +38,11 @@ def generate_launch_description():
     ld.add_action(num_robots_arg)
 
     # Use functools.partial to pass datum to launch_setup
-    ld.add_action(OpaqueFunction(function=partial(launch_setup, datum=datum)))
+    ld.add_action(OpaqueFunction(function=partial(launch_setup, param_file=config_file)))
 
     return ld
 
-def launch_setup(context, datum, *args, **kwargs):
+def launch_setup(context, param_file, *args, **kwargs):
     # Retrieve the launch configuration variables
     num_robots = int(LaunchConfiguration('num_robots').perform(context))
     actions = []
@@ -51,14 +51,12 @@ def launch_setup(context, datum, *args, **kwargs):
         package='farmbot_flatlands',
         executable='simulator',
         name='simulator',
-        # namespace=namespace,
-        parameters=[{
-            'publish_rate': 10.0,
-            'datum': datum,  # Use the passed datum
-            'max_linear_accel': 0.7,
-            'max_angular_accel': 0.7,
-            'num_robots': num_robots,
-        }],
+        parameters=[
+            {
+                'publish_rate': 10.0,
+                'num_robots': num_robots,
+            },
+        ],
         output='screen'
     )
     actions.append(robot_node)
