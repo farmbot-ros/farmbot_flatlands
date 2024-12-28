@@ -127,6 +127,7 @@ namespace sim {
             rclcpp::Logger logger_;
             std::string name_;
             std_msgs::msg::Int8 rci_;
+            std_msgs::msg::String uuid_;
             // Plugins
             std::shared_ptr<plugins::GPSPlugin> gps_plugin_;
             std::shared_ptr<plugins::WheelPlugin> wheel_plugin_;
@@ -142,6 +143,7 @@ namespace sim {
 
             rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr twist_sub_;
             rclcpp::Publisher<std_msgs::msg::Int8>::SharedPtr rci_level_pub_;
+            rclcpp::Publisher<std_msgs::msg::String>::SharedPtr uuid_pub_;
 
             double max_linear_vel_ = 1;     // meters per second
             double max_angular_vel_ = 1;    // radians per second
@@ -178,6 +180,7 @@ namespace sim {
             name_ + "/cmd_vel", 10, std::bind(&Robot::set_twist, this, std::placeholders::_1));
 
         rci_level_pub_ = node->create_publisher<std_msgs::msg::Int8>(name_ + "/rci", 10);
+        uuid_pub_ = node->create_publisher<std_msgs::msg::String>(name_ + "/uuid", 10);
 
         // Initialize odometry message
         odom_.header.frame_id = "world";
@@ -215,6 +218,8 @@ namespace sim {
 
         // Set RCI Level
         rci_.data = config.rci;
+        // Set UUID
+        uuid_.data = config.uuid;
 
         odom_.pose.pose.position.x = config.pose.x;
         odom_.pose.pose.position.y = config.pose.y;
@@ -247,6 +252,7 @@ namespace sim {
         });
 
         rci_level_pub_->publish(rci_);
+        uuid_pub_->publish(uuid_);
     }
 
 
