@@ -11,15 +11,13 @@ from launch.actions import DeclareLaunchArgument, OpaqueFunction
 from ament_index_python.packages import get_package_share_directory
 
 def generate_launch_description():
-    # Get the package share directory and config file path
+    ld = LaunchDescription()
     pkg_share = get_package_share_directory('farmbot_flatlands')
     config_file = os.path.join(pkg_share, 'config', 'simulation.yaml')
 
-    # Load the YAML configuration file
     with open(config_file, 'r') as f:
         config = yaml.safe_load(f)
 
-    # Extract the number of robots from the config file
     num_robots_param = config.get('global', {}).get('ros__parameters', {}).get('num_robots', 1)
 
     num_robots_arg = DeclareLaunchArgument(
@@ -27,21 +25,23 @@ def generate_launch_description():
         default_value=str(num_robots_param),
         description='Number of robots to spawn'
     )
-
-    # Path to the localization.launch.py file
-
-    # Create the main launch description
-    ld = LaunchDescription()
     ld.add_action(num_robots_arg)
 
-    # Add ann OpaqueFunction to the launch description
-    ld.add_action(OpaqueFunction(function=launch_setup))
+    tcp_arg = DeclareLaunchArgument(
+        'tcp',
+        default_value='127.0.0.0:9876',
+        description='TCP address to connect to the rerun server'
+    )
+    ld.add_action(tcp_arg)
 
+
+    ld.add_action(OpaqueFunction(function=launch_setup))
     return ld
 
 
 def launch_setup(context, *args, **kwargs):
     num_robots = int(LaunchConfiguration('num_robots').perform(context))
+    tcp = str(LaunchConfiguration('tcp').perform(context))
 
     pgk_share = get_package_share_directory('farmbot_holodeck')
     launch_file = os.path.join(pgk_share, 'launch', 'rerun.launch.py')
@@ -55,6 +55,7 @@ def launch_setup(context, *args, **kwargs):
                 PythonLaunchDescriptionSource(launch_file),
                 launch_arguments={
                     'namespace': namespace,
+                    'tcp': tcp
                 }.items()
             )
         ])
